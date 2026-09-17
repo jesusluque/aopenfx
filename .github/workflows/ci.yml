@@ -15,9 +15,12 @@ jobs:
 
       - name: Every header compiles on its own
         run: |
+          # Included from a translation unit of its own, as a plugin would: a
+          # header compiled as the main file draws "#pragma once in main file".
           for header in sdk/include/aofx/*.h; do
             echo "$header"
-            g++ -std=c++20 -Wall -Wextra -Werror -fsyntax-only -x c++ -Isdk/include "$header"
+            printf '#include "aofx/%s"\n' "$(basename "$header")" |
+              g++ -std=c++20 -Wall -Wextra -Werror -fsyntax-only -x c++ -Isdk/include -
           done
 
       # No CUDA toolkit and no slangc on the runner, so the kernel backend is
