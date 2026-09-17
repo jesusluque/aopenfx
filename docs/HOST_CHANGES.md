@@ -1,5 +1,17 @@
 # Changes a host has to make
 
+## The gpe checkout for kernel trailers is `AOFX_GPE_DIR`
+
+`sdk/cmake/AofxKernel.cmake` now reads `AOFX_GPE_DIR` to find gpe's
+`KernelTrailer.cmake`, and falls back to the host's own name for it only when `AOFX_GPE_DIR` is unset.
+
+- **Set `AOFX_GPE_DIR`** in the host's CMake to the same gpe checkout, before
+  its plugins call `aofx_add_kernel`. Nothing breaks until the fallback is
+  removed in a later version.
+
+Check: the host's configure log, or the size of a generated
+`aofx_kernels_<name>.h`, shows the trailer is still appended.
+
 ## `RenderRequest::outputRod` is the whole picture, not the render window
 
 Found while verifying the blur example: a host that sets

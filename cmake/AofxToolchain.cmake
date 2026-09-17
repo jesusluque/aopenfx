@@ -114,8 +114,6 @@ option(AOFX_REQUIRE_REFLECTION
        "Fail the configure when kernels would be built without a reflection trailer" OFF)
 set(AOFX_HAVE_REFLECTION FALSE)
 if(AOFX_GPE_DIR AND EXISTS "${AOFX_GPE_DIR}/cmake/KernelTrailer.cmake")
-    # The name AofxKernel.cmake reads.
-    set(AOFX_HOST_GPE_DIR "${AOFX_GPE_DIR}")
     set(AOFX_HAVE_REFLECTION TRUE)
     message(STATUS "aopenfx: kernels carry gpe's reflection trailer")
 elseif(AOFX_GPE_DIR)

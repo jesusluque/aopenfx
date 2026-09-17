@@ -251,9 +251,12 @@ it is producing is handed the part of its source that happens to lie under that
 rectangle — for a quad elsewhere in the frame, most of it missing, and the
 picture looks cropped rather than wrong.
 
-A **spreading** effect does not need to answer it: its region of definition
-already grew, so what it is asked to produce is already bigger than what it
-reads. A **moving** effect does. Return one rectangle per input, in clip order;
+A **spreading** effect answers it too. Its grown region of definition covers a
+render of the whole picture, but a host may ask for part of it -- a viewer's
+window, one tile -- and every pixel at the edge of that part sums neighbours
+outside it; `examples/blur/Blur.cpp` grows the output by its reach, at the
+render's scale. A **moving** effect answers it because there is no relationship
+between where its output is and where its input is. Return one rectangle per input, in clip order;
 an empty one means "the same as the output", so you can answer for one input and
 leave the rest alone.
 

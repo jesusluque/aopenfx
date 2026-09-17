@@ -95,7 +95,14 @@ function(aofx_add_kernel target name)
     # that does not match. Guarded because the trailer generator arrived in gpe
     # after this file did: an older engine beside a newer tree still builds,
     # and its kernels simply go on being bytes and a name.
-    set(trailerCmake "${AOFX_HOST_GPE_DIR}/cmake/KernelTrailer.cmake")
+    # AOFX_GPE_DIR names the gpe checkout. The older name is still read, so a
+    # host build that sets it keeps its trailers until it moves to the new one.
+    if(AOFX_GPE_DIR)
+        set(trailerRoot "${AOFX_GPE_DIR}")
+    else()
+        set(trailerRoot "${AOFX_HOST_GPE_DIR}")
+    endif()
+    set(trailerCmake "${trailerRoot}/cmake/KernelTrailer.cmake")
     set(withTrailer "")
     if(EXISTS "${trailerCmake}")
         set(withTrailer "\
