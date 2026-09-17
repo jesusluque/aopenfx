@@ -804,10 +804,14 @@ public:
     /// rectangle, which for a quad somewhere else in the frame is nothing at
     /// all or, worse, part of it.
     ///
-    /// A spreading effect -- a blur -- does not need this: its region of
-    /// definition already grew, so what it is asked to produce is already
-    /// bigger than what it needs to read. A *moving* effect does, because there
-    /// is no relationship between where its output is and where its input is.
+    /// A spreading effect -- a blur -- needs it too, and this comment used to
+    /// say otherwise. Its grown region of definition covers a render of the
+    /// *whole* picture, but a host does not always ask for the whole picture: a
+    /// viewer asks for its window, a tiled render for one tile. A pixel at the
+    /// edge of that rectangle is a sum over neighbours outside it, so a blur
+    /// asks for the output grown by its reach, at the render's scale. A
+    /// *moving* effect needs it for a different reason: there is no
+    /// relationship at all between where its output is and where its input is.
     ///
     /// Return one rectangle per input, in clip order. Anything empty is read as
     /// "the same as the output", so an effect can answer for one input and

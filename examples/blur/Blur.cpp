@@ -35,27 +35,18 @@
 
 #include "aofx/Entry.h"
 
+#include "BlurMath.h"
 #include "aofx_kernels_blur.h"
 
 namespace {
+
+using namespace aofx_examples::blur;
 
 /// Unique across every plugin loaded in one process, which is why it is a
 /// reverse-DNS name and not "blur".
 constexpr const char* kKernel = "org.aopenfx.blur";
 /// And the function inside the blob, which is a different thing entirely.
 constexpr const char* kEntry = "blurMain";
-constexpr const char* kParamSize = "size";
-
-/// Standard deviations covered before the kernel is cut off.
-///
-/// Three covers 99.7% of the curve, which is below one code value at eight bits
-/// and is where every other implementation stops. Named because it is a
-/// decision rather than a constant: it trades a wider kernel against a visible
-/// step at the edge of the blur.
-constexpr double kRadiusInSigmas = 3.0;
-
-/// CImgBlur's, so the two are interchangeable.
-constexpr double kSigmaPerSize = 1.0 / 2.4;
 
 /// Matched byte for byte by `BlurParams` in blur.slang.
 struct BlurUniforms {
@@ -74,29 +65,22 @@ struct BlurUniforms {
 };
 static_assert(sizeof(BlurUniforms) == 48, "no padding, on any compiler");
 
-/// Fills in where `from` sits relative to `into`.
+/// Fills in where `from` sits relative to `into`, and what the pass walks.
 ///
 /// The whole reason a Buffer carries a rectangle. Destination pixel (0,0) is at
 /// source coordinate `into.rect.x1 - from.rect.x1`, which is negative whenever
-/// the output is the larger -- and for a blur it always is.
+/// the destination starts left of or below the source -- and for a blur's
+/// output it usually does.
 void relate(BlurUniforms& uniforms, const aofx::Buffer& from,
             const aofx::Buffer& into) {
+    uniforms.width = static_cast<uint32_t>(into.width);
+    uniforms.height = static_cast<uint32_t>(into.height);
     uniforms.srcWidth = static_cast<uint32_t>(from.width);
     uniforms.srcHeight = static_cast<uint32_t>(from.height);
     uniforms.srcOffsetX = into.rect.x1 - from.rect.x1;
     uniforms.srcOffsetY = into.rect.y1 - from.rect.y1;
     uniforms.srcStride = static_cast<uint32_t>(from.stride);
     uniforms.dstStride = static_cast<uint32_t>(into.stride);
-}
-
-[[nodiscard]] double sigmaFrom(double size) {
-    return std::max(size, 0.0) * kSigmaPerSize;
-}
-
-[[nodiscard]] int radiusFrom(double sigma) {
-    return sigma <= 0.0
-               ? 0
-               : static_cast<int>(std::lround(std::ceil(sigma * kRadiusInSigmas)));
 }
 
 class Blur final : public aofx::Effect {
@@ -131,34 +115,44 @@ public:
         return {aofx::KernelDesc{kKernel, kEntry, k_blur, k_blurBytes}};
     }
 
-    /// Bigger than the input, by exactly what the filter reaches.
+    /// Bigger than the input, by exactly what the filter reaches at this scale.
     ///
     /// A blur genuinely creates picture outside its input -- that is what the
     /// soft edge is -- and a host that believes otherwise crops it off. The
     /// number here has to be the same one the kernel uses, or energy is lost
     /// over the edge and it reads as a grade error rather than a filter one.
+    /// The scaled question, because the size knob is canonical pixels and the
+    /// rectangles arrive at the render's scale: answering the unscaled one grew
+    /// a half-size render by the full-size reach.
     [[nodiscard]] aofx::Rect regionOfDefinition(
-        double time, const std::vector<aofx::Rect>& inputRods,
+        double time, double scaleX, double scaleY,
+        const std::vector<aofx::Rect>& inputRods,
         const std::vector<aofx::ParamValue>& params) const override {
-        aofx::Rect out = aofx::Effect::regionOfDefinition(time, inputRods, params);
-        if (out.isEmpty()) {
-            return out;
-        }
         double sizeX = 0.0;
         double sizeY = 0.0;
-        for (const aofx::ParamValue& value : params) {
-            if (value.name == kParamSize) {
-                sizeX = value.number(0, 0.0);
-                sizeY = value.number(1, sizeX);
-            }
-        }
-        const int growX = radiusFrom(sigmaFrom(sizeX));
-        const int growY = radiusFrom(sigmaFrom(sizeY));
-        out.x1 -= growX;
-        out.x2 += growX;
-        out.y1 -= growY;
-        out.y2 += growY;
-        return out;
+        sizeFrom(params, sizeX, sizeY);
+        return grown(aofx::Effect::regionOfDefinition(time, inputRods, params),
+                     reachAt(sizeX, sizeY, scaleX, scaleY));
+    }
+
+    /// The output's rectangle, grown by what the filter reaches.
+    ///
+    /// A host does not always ask for the whole region of definition: a viewer
+    /// asks for the window it shows, a tiled render for one tile. A pixel at the
+    /// edge of that rectangle is a weighted sum of neighbours outside it, and
+    /// asking only for the rectangle itself hands the kernel transparent black
+    /// where those neighbours should be -- a dark border around every tile.
+    [[nodiscard]] std::vector<aofx::Rect> regionOfInterest(
+        const RegionQuery& query, const aofx::Rect& output) const override {
+        static const std::vector<aofx::ParamValue> noParams;
+        double sizeX = 0.0;
+        double sizeY = 0.0;
+        sizeFrom(query.params != nullptr ? *query.params : noParams, sizeX, sizeY);
+        const std::size_t inputs =
+            query.inputRods != nullptr ? query.inputRods->size() : 1;
+        return std::vector<aofx::Rect>(
+            std::max<std::size_t>(inputs, 1),
+            grown(output, reachAt(sizeX, sizeY, query.scaleX, query.scaleY)));
     }
 
     /// A blur of nothing is the picture.
@@ -170,8 +164,9 @@ public:
     [[nodiscard]] bool isIdentity(const aofx::RenderRequest& request) const override {
         const double sizeX = request.number(kParamSize, 0.0, 0);
         const double sizeY = request.number(kParamSize, sizeX, 1);
-        return radiusFrom(sigmaFrom(sizeX)) == 0 &&
-               radiusFrom(sigmaFrom(sizeY)) == 0;
+        // At this render's scale, like the regions: a blur too small to reach a
+        // neighbour at a proxy scale is a copy there, and says so.
+        return reachAt(sizeX, sizeY, request.scaleX, request.scaleY).none();
     }
 
     [[nodiscard]] bool process(const aofx::RenderRequest& request) override {
@@ -189,56 +184,61 @@ public:
             return false;
         }
 
+        const double sizeX = request.number(kParamSize, 0.0, 0);
+        const double sizeY = request.number(kParamSize, sizeX, 1);
+        const Reach reach = reachAt(sizeX, sizeY, request.scaleX, request.scaleY);
+
         // Somewhere to put the first pass. Asked of the host rather than
         // allocated, so it comes from the same pool as everything else, counts
         // against the same budget, and is recycled instead of being handed back
         // to the driver -- which at video rates is the difference between a
         // temporary and a stall.
-        aofx::Buffer scratch =
-            request.gpu->scratch(target->buffer.width, target->buffer.height);
+        //
+        // Taller than the output by the vertical reach, above and below. The
+        // second pass reads `radiusY` rows either side of every output row, and
+        // a scratch the output's own shape had no rows there: its top and bottom
+        // rows were blurred against transparent black instead of against the
+        // picture above and below the window.
+        const int scratchHeight = target->buffer.height + 2 * reach.radiusY;
+        aofx::Buffer scratch = request.gpu->scratch(target->buffer.width, scratchHeight);
         if (!scratch.isValid()) {
             // No room. Giving up on the frame beats rendering half of it.
             return false;
         }
-        // The host hands a scratch at the origin; this one is the output's own
-        // shape and stands in for it, so it takes the output's place in the
-        // picture. Without that the first pass relates the source to a
-        // rectangle at zero and a source that does not start at zero -- a
-        // card, a crop, anything smaller than the frame -- lands outside it.
-        scratch.rect = target->buffer.rect;
-
-        const double sizeX = request.number(kParamSize, 0.0, 0);
-        const double sizeY = request.number(kParamSize, sizeX, 1);
-
-        const aofx::Grid grid{static_cast<uint32_t>(target->buffer.width),
-                              static_cast<uint32_t>(target->buffer.height), 1};
+        // The host hands a scratch at the origin; this one stands for the
+        // output's columns and the rows around them, so it takes that place in
+        // the picture. Without it the first pass relates the source to a
+        // rectangle at zero, and a source that does not start at zero lands
+        // outside it.
+        scratch.rect = aofx::Rect{target->buffer.rect.x1, target->buffer.rect.y1 - reach.radiusY,
+                                  target->buffer.rect.x2, target->buffer.rect.y2 + reach.radiusY};
 
         // Along x into the scratch, then along y out of it. One kernel per
         // axis, never averaged into one: a horizontal-only blur is a real thing
         // to ask for, and an effect that quietly averages the two refuses it.
         BlurUniforms uniforms;
-        uniforms.width = static_cast<uint32_t>(target->buffer.width);
-        uniforms.height = static_cast<uint32_t>(target->buffer.height);
-
         relate(uniforms, source->buffer, scratch);
         uniforms.stepX = 1;
         uniforms.stepY = 0;
-        uniforms.sigma = static_cast<float>(sigmaFrom(sizeX));
-        uniforms.radius = static_cast<uint32_t>(radiusFrom(sigmaFrom(sizeX)));
-        if (!request.gpu->run(kernel, grid, {source->buffer, scratch}, &uniforms,
-                              sizeof(uniforms))) {
+        uniforms.sigma = static_cast<float>(reach.sigmaX);
+        uniforms.radius = static_cast<uint32_t>(reach.radiusX);
+        if (!request.gpu->run(kernel,
+                              aofx::Grid{uniforms.width, uniforms.height, 1},
+                              {source->buffer, scratch}, &uniforms, sizeof(uniforms))) {
             return false;
         }
 
-        // The scratch has the output's own rectangle, so the second pass is
-        // a straight walk with no offset at all.
+        // Out of the scratch: the output's row 0 is the scratch's row
+        // `radiusY`, so every tap of this pass lands on a row the first pass
+        // wrote.
         relate(uniforms, scratch, target->buffer);
         uniforms.stepX = 0;
         uniforms.stepY = 1;
-        uniforms.sigma = static_cast<float>(sigmaFrom(sizeY));
-        uniforms.radius = static_cast<uint32_t>(radiusFrom(sigmaFrom(sizeY)));
-        return request.gpu->run(kernel, grid, {scratch, target->buffer},
-                                &uniforms, sizeof(uniforms));
+        uniforms.sigma = static_cast<float>(reach.sigmaY);
+        uniforms.radius = static_cast<uint32_t>(reach.radiusY);
+        return request.gpu->run(kernel,
+                                aofx::Grid{uniforms.width, uniforms.height, 1},
+                                {scratch, target->buffer}, &uniforms, sizeof(uniforms));
     }
 };
 

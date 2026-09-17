@@ -42,3 +42,11 @@ if(AOFX_HAVE_LIBSTDCXX)
 else()
     message(STATUS "aopenfx: not libstdc++, so the old/new string ABI tag test is skipped")
 endif()
+
+# The blur example's regions and reach, checked on a CPU against the same
+# functions the effect calls. No kernel, no GPU, no host.
+add_executable(aofx_blur_regions_tests test_blur_regions.cpp)
+target_link_libraries(aofx_blur_regions_tests PRIVATE aofx::aofx)
+target_include_directories(aofx_blur_regions_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/examples/blur)
+add_test(NAME aofx_blur_regions_tests COMMAND aofx_blur_regions_tests)
