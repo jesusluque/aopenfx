@@ -381,9 +381,16 @@ public:
     ///
     /// Inverted, it is the input's own rectangle -- what comes back is the
     /// straightened quad, and that is the frame.
+    ///
+    /// The scaled question, because the typed corners are canonical pixels and
+    /// the rectangles arrive at the render's scale: a half-size render used to
+    /// get a region twice as far out as its picture.
     [[nodiscard]] aofx::Rect regionOfDefinition(
-        double time, const std::vector<aofx::Rect>& inputRods,
+        double time, double scaleX, double scaleY,
+        const std::vector<aofx::Rect>& inputRods,
         const std::vector<aofx::ParamValue>& params) const override {
+        const double sx = scaleX > 0.0 ? scaleX : 1.0;
+        const double sy = scaleY > 0.0 ? scaleY : 1.0;
         // A connected Track makes the corners dynamic: they arrive on the
         // picture at render time, and the authored parameters below are only
         // the seed. A region computed from the seed is a box around where
@@ -421,8 +428,10 @@ public:
             double y = ys[index];
             for (const aofx::ParamValue& value : params) {
                 if (value.name == name && value.numbers.size() >= 2) {
-                    x = value.numbers[0];
-                    y = value.numbers[1];
+                    // Typed corners are canonical; the fallback, the input's
+                    // own rectangle, is already at this render's scale.
+                    x = value.numbers[0] * sx;
+                    y = value.numbers[1] * sy;
                 }
             }
             if (first) {
