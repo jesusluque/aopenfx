@@ -70,3 +70,22 @@ and many intermediates would be fine at half precision.
 for its outputs and scratches, with the host converting at the boundary where a
 consumer needs the full format. Not designed yet; it touches every kernel's
 indexing and the host's cache.
+
+## Kernels that cannot read out of range
+
+**Why.** A kernel runs with raw buffer pointers and nothing checks each read. On
+CUDA, one read outside a buffer poisons the whole process's device context, not
+one dispatch, and a long-running host renders nothing more until it restarts.
+The pattern seen in practice is a coordinate computed from a homography or a lens
+model: a degenerate transform puts it at infinity, `int(floor(x))` becomes
+`INT_MAX`, and an integer check such as `x0 + 1 >= width` wraps negative and lets
+the read through.
+
+**Shape.**
+- **A sampling helper in the SDK's kernel headers:** nearest and bilinear, with
+  the range checked on the floats before any conversion. NaN, infinities and
+  huge values read as "outside", and kernels that read at computed coordinates
+  use it rather than writing their own check.
+- **The examples moved onto it.**
+- **A CI job that runs the examples' kernels on CUDA** with synchronous launches
+  and device memory checking, so an out-of-range read fails the build.
