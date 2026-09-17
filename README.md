@@ -95,5 +95,4 @@ Read `docs/aofx-sdk.md` first. `examples/invert` is the shortest complete plugin
 
 ## Licence
 
-Not chosen yet. Until a licence is added, no rights beyond those GitHub's terms
-of service grant are given.
+BSD 3-Clause, the same licence as OpenFX. See `LICENSE`.
