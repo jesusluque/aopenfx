@@ -40,6 +40,8 @@ The examples, and what each shows:
 - **Linux:** the CUDA toolkit, for `nvcc`. The PTX is built for the card this machine has; pass `-DGPE_CUDA_ARCH=sm_XX` to choose the oldest card the bundles must run on.
 - **Windows:** CUDA as on Linux. *Not verified yet.*
 
+Verified so far on **macOS** (Apple silicon, Metal) and **Linux** (x86-64, CUDA, NVIDIA L4). On both, all eight example bundles build, load in a host and render.
+
 ## Build
 
 ```sh
