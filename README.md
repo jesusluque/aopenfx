@@ -71,7 +71,7 @@ cmake --build build
 
 The bundles land in `build/aofx/<Name>.aofx.bundle/Contents/<MacOS|Linux-x86-64|Win64>/`.
 
-Pass `-DAOFX_GPE_DIR=<gpe checkout>` to append gpe's reflection trailer to every kernel. With it, the host refuses a dispatch whose buffer or uniform sizes do not match what the kernel declared, instead of rendering black.
+Every kernel carries a reflection trailer: its thread-group size and the byte sizes of its buffers and uniform block, which a host uses to refuse a dispatch that disagrees with the kernel instead of rendering black. `-DAOFX_KERNEL_REFLECTION=OFF` leaves it out; `-DAOFX_REQUIRE_REFLECTION=ON` turns that into a configure error.
 
 ## Load in a host
 

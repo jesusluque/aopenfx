@@ -23,6 +23,11 @@
 # tree means setting these yourself -- which is the same requirement as the C++
 # ABI: an AOFX plugin is built with the host's toolchain or not at all.
 
+# The reflection trailer's generator, beside this file; see AofxKernelTrailer.cmake.
+set(_AOFX_KERNEL_TRAILER "${CMAKE_CURRENT_LIST_DIR}/AofxKernelTrailer.cmake")
+option(AOFX_KERNEL_REFLECTION
+       "Append a reflection trailer (thread groups, buffer and uniform sizes) to every kernel" ON)
+
 function(aofx_add_kernel target name)
     cmake_parse_arguments(ARG "" "" "ENTRY" ${ARGN})
     if(NOT ARG_ENTRY)
@@ -91,23 +96,15 @@ function(aofx_add_kernel target name)
     # .slang file and its mirror in C++ drifting apart used to produce black
     # output and not one word.
     #
-    # gpe reads a trailer appended to the blob and refuses, by name, a dispatch
-    # that does not match. Guarded because the trailer generator arrived in gpe
-    # after this file did: an older engine beside a newer tree still builds,
-    # and its kernels simply go on being bytes and a name.
-    # AOFX_GPE_DIR names the gpe checkout. The older name is still read, so a
-    # host build that sets it keeps its trailers until it moves to the new one.
-    if(AOFX_GPE_DIR)
-        set(trailerRoot "${AOFX_GPE_DIR}")
-    else()
-        set(trailerRoot "${AOFX_HOST_GPE_DIR}")
-    endif()
-    set(trailerCmake "${trailerRoot}/cmake/KernelTrailer.cmake")
+    # A host reads a trailer appended to the blob and refuses, by name, a
+    # dispatch that does not match. The generator is this SDK's own
+    # (AofxKernelTrailer.cmake), so every kernel carries one unless the build
+    # turns it off with -DAOFX_KERNEL_REFLECTION=OFF.
     set(withTrailer "")
-    if(EXISTS "${trailerCmake}")
+    if(AOFX_KERNEL_REFLECTION)
         set(withTrailer "\
-include(\"${trailerCmake}\")
-gpe_kernel_trailer_hex(\"${json}\" \"${ARG_ENTRY}\" trailer)
+include(\"${_AOFX_KERNEL_TRAILER}\")
+aofx_kernel_trailer_hex(\"${json}\" \"${ARG_ENTRY}\" trailer)
 string(APPEND hex \"\${trailer}\")
 ")
     endif()

@@ -18,10 +18,6 @@
 #
 #   AOFX_HAVE_KERNELS  whether a plugin with kernels can be built at all
 #   AOFX_ARCH_DIR      the bundle's per-platform folder: MacOS, Linux-x86-64, Win64
-#
-# Pass -DAOFX_GPE_DIR=<gpe checkout> to append gpe's reflection trailer to every
-# kernel blob -- the host then refuses a dispatch whose buffer or uniform sizes
-# do not match what the kernel declared, instead of rendering nothing.
 
 include_guard(GLOBAL)
 
@@ -102,30 +98,19 @@ elseif(GPE_SLANGC AND GPE_BACKEND STREQUAL "CUDA")
     set(AOFX_HAVE_KERNELS TRUE)
 endif()
 
-# --- gpe's reflection trailer, when a checkout is named --------------------
+# --- the reflection trailer ----------------------------------------------
 #
-# The trailer is what lets a host refuse a kernel dispatch whose buffer element
-# sizes or uniform block size disagree with what the kernel declared. Without
-# it a .slang struct and its C++ mirror can drift apart and the only symptom is
-# a black picture. It is not built into the SDK yet (see docs/ROADMAP.md), so
-# for now it comes from a gpe checkout, and a build without one says so loudly.
-set(AOFX_GPE_DIR "" CACHE PATH "A gpe checkout, for the kernel reflection trailer (optional)")
+# Every kernel carries a reflection trailer by default (sdk/cmake/
+# AofxKernelTrailer.cmake): a host uses it to refuse a dispatch whose buffer or
+# uniform sizes disagree with what the kernel declared, instead of rendering
+# black. -DAOFX_KERNEL_REFLECTION=OFF drops it; AOFX_REQUIRE_REFLECTION makes
+# that an error for builds that must not ship without it.
 option(AOFX_REQUIRE_REFLECTION
        "Fail the configure when kernels would be built without a reflection trailer" OFF)
-set(AOFX_HAVE_REFLECTION FALSE)
-if(AOFX_GPE_DIR AND EXISTS "${AOFX_GPE_DIR}/cmake/KernelTrailer.cmake")
-    set(AOFX_HAVE_REFLECTION TRUE)
-    message(STATUS "aopenfx: kernels carry gpe's reflection trailer")
-elseif(AOFX_GPE_DIR)
-    message(WARNING "aopenfx: ${AOFX_GPE_DIR} has no cmake/KernelTrailer.cmake")
-endif()
-
-if(AOFX_HAVE_KERNELS AND NOT AOFX_HAVE_REFLECTION)
+if(AOFX_HAVE_KERNELS AND DEFINED AOFX_KERNEL_REFLECTION AND NOT AOFX_KERNEL_REFLECTION)
     set(noTrailer
-        "aopenfx: kernels are built WITHOUT a reflection trailer. A host cannot "
-        "check a dispatch against what the kernel declared, so a uniform struct "
-        "that disagrees with its C++ mirror renders black instead of failing. "
-        "Pass -DAOFX_GPE_DIR=<gpe checkout> to add it.")
+        "aopenfx: AOFX_KERNEL_REFLECTION is OFF, so kernels carry no reflection "
+        "trailer and a host cannot check a dispatch against what a kernel declared.")
     if(AOFX_REQUIRE_REFLECTION)
         message(FATAL_ERROR ${noTrailer} " (AOFX_REQUIRE_REFLECTION is ON)")
     else()

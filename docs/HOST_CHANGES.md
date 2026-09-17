@@ -1,16 +1,19 @@
 # Changes a host has to make
 
-## The gpe checkout for kernel trailers is `AOFX_GPE_DIR`
+## Kernel reflection trailers come from the SDK
 
-`sdk/cmake/AofxKernel.cmake` now reads `AOFX_GPE_DIR` to find gpe's
-`KernelTrailer.cmake`, and falls back to the host's own name for it only when `AOFX_GPE_DIR` is unset.
+`sdk/cmake/AofxKernel.cmake` appends the reflection trailer with the SDK's own
+generator (`sdk/cmake/AofxKernelTrailer.cmake`), on by default. It no longer
+looks for a gpe checkout to find one. The trailer's bytes are unchanged:
+same layout, version 1, magic `GPEK`.
 
-- **Set `AOFX_GPE_DIR`** in the host's CMake to the same gpe checkout, before
-  its plugins call `aofx_add_kernel`. Nothing breaks until the fallback is
-  removed in a later version.
+- **Nothing to set.** A host whose build passed a gpe directory only so kernels
+  would carry the trailer can stop; `AOFX_KERNEL_REFLECTION` (default ON)
+  controls it now.
+- **The host still reads the trailer** exactly as before.
 
-Check: the host's configure log, or the size of a generated
-`aofx_kernels_<name>.h`, shows the trailer is still appended.
+Check: a generated `aofx_kernels_<name>.h` is byte-identical to the one built
+with the previous generator.
 
 ## `RenderRequest::outputRod` is the whole picture, not the render window
 
