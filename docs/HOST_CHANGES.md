@@ -1,5 +1,25 @@
 # Changes a host has to make
 
+## `RenderRequest::outputRod` is the whole picture, not the render window
+
+Found while verifying the blur example: a host that sets
+`request.outputRod = request.renderWindow` breaks every effect that needs to
+know where the picture ends. `Effect.h` documents the two as different: the
+window is the part being rendered, the output RoD is the whole picture that
+window belongs to. When they are the same rectangle, a pattern generator draws
+its pattern across whatever was asked for -- a blur downstream that asks for a
+margin moved every colour-bar boundary, and a tiled render would draw a full
+set of bars per tile.
+
+- **Set `outputRod`** to the node's region of definition at the render scale,
+  intersected with whatever the host clips to (the project format), and
+  `renderWindow` to the part being rendered.
+- The generator examples no longer rely on it (they work out their frame from
+  their own region), but other effects may.
+
+Check: render a ColorBars node alone, and again under a blur of size 8; the bar
+boundaries in the blurred picture are where they are in the unblurred one.
+
 What changed in the SDK that a host implementing it must follow. Newest first.
 Each entry says what to change and how to tell it worked.
 

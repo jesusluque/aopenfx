@@ -181,14 +181,36 @@ void fillTarget(GenerateUniforms& uniforms, const aofx::RenderRequest& request,
     uniforms.dstStride = static_cast<uint32_t>(target.stride);
     uniforms.originX = target.rect.x1;
     uniforms.originY = target.rect.y1;
-    // The whole picture, not the buffer. `outputRod` is what the host asked
-    // this node to cover; the buffer may be one tile of it, or -- when the
-    // project crops to format and this node asked for less -- a larger canvas
-    // this pattern must not spread into.
-    uniforms.frameX1 = request.outputRod.x1;
-    uniforms.frameY1 = request.outputRod.y1;
-    uniforms.frameX2 = request.outputRod.x2;
-    uniforms.frameY2 = request.outputRod.y2;
+    // The whole picture, not the buffer: the buffer may be one tile of it, or
+    // -- when the project crops to format and this node asked for less -- a
+    // larger canvas this pattern must not spread into.
+    //
+    // Worked out here from what this node *is*, rather than taken from
+    // `outputRod`. The contract says `outputRod` is the whole picture, but a
+    // host that hands over the render window instead makes the bars depend on
+    // how much was asked for: a blur downstream that asks for a margin moved
+    // every bar boundary, and a tiled render would draw seven bars per tile.
+    // The pattern's own region of definition does not change with the request.
+    aofx::Rect frame = sizedRod(request.params, request.scaleX, request.scaleY);
+    const bool everywhere = frame.x1 == kEverywhere.x1 && frame.x2 == kEverywhere.x2 &&
+                            frame.y1 == kEverywhere.y1 && frame.y2 == kEverywhere.y2;
+    if (everywhere) {
+        if (request.projectWidth > 0 && request.projectHeight > 0) {
+            // "The project format", at this render's scale.
+            const double sx = request.scaleX > 0.0 ? request.scaleX : 1.0;
+            const double sy = request.scaleY > 0.0 ? request.scaleY : 1.0;
+            frame = aofx::Rect{0, 0,
+                               static_cast<int>(std::lround(request.projectWidth * sx)),
+                               static_cast<int>(std::lround(request.projectHeight * sy))};
+        } else {
+            // A host too old to say the project's size: the best there is.
+            frame = request.outputRod;
+        }
+    }
+    uniforms.frameX1 = frame.x1;
+    uniforms.frameY1 = frame.y1;
+    uniforms.frameX2 = frame.x2;
+    uniforms.frameY2 = frame.y2;
 }
 
 /// One dispatch of one pattern kernel into the output. Every generator's
