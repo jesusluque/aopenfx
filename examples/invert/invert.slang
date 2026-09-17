@@ -52,11 +52,25 @@ StructuredBuffer<float4>     mask;
 RWStructuredBuffer<float4>   dst;
 ConstantBuffer<InvertParams> params;
 
+/// The source pixel under destination pixel `xy`. Outside the source is
+/// transparent.
+///
+/// Offset first, then bounds-checked. The destination and the source are two
+/// rectangles that need not share an origin or a size -- the offset is
+/// `target.rect.x1 - source.rect.x1`, and it is not zero whenever the host
+/// hands over more (or less) of the input than it asks to be written. The
+/// first version clamped the *destination* coordinate against the *source's*
+/// size and added the offset afterwards, which reads past the end of `src` as
+/// soon as the offset is positive: on the device that is not a wrong pixel but
+/// a read at an arbitrary address. Transparent rather than the edge pixel
+/// repeated, the convention every other example uses (see grade.slang).
 float4 fetchSource(uint2 xy) {
-    const int sx = clamp(int(xy.x), 0, int(params.srcWidth) - 1) +
-                   params.srcOffsetX;
-    const int sy = clamp(int(xy.y), 0, int(params.srcHeight) - 1) +
-                   params.srcOffsetY;
+    const int sx = int(xy.x) + params.srcOffsetX;
+    const int sy = int(xy.y) + params.srcOffsetY;
+    if (sx < 0 || sy < 0 || sx >= int(params.srcWidth) ||
+        sy >= int(params.srcHeight)) {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
     return src[uint(sy) * params.srcStride + uint(sx)];
 }
 

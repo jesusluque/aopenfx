@@ -48,10 +48,17 @@ RWStructuredBuffer<float4> dst;
 ConstantBuffer<CropParams> params;
 
 float4 fetchSource(int x, int y) {
-    // Offset first, then clamped: the source can be larger or smaller than
-    // the output, and a clamp before the offset reads past either end.
-    const int cx = clamp(x + params.srcOffsetX, 0, int(params.srcWidth) - 1);
-    const int cy = clamp(y + params.srcOffsetY, 0, int(params.srcHeight) - 1);
+    // Offset first, then bounds-checked: the source can be larger or smaller
+    // than the output, and a clamp before the offset reads past either end.
+    // Outside the source is transparent, not the edge pixel repeated -- a crop
+    // handed less of its input than it writes has nothing to show there, and
+    // smearing the last row across the gap would be inventing a picture.
+    const int cx = x + params.srcOffsetX;
+    const int cy = y + params.srcOffsetY;
+    if (cx < 0 || cy < 0 || cx >= int(params.srcWidth) ||
+        cy >= int(params.srcHeight)) {
+        return float4(0.0, 0.0, 0.0, 0.0);
+    }
     return src[uint(cy) * params.srcStride + uint(cx)];
 }
 

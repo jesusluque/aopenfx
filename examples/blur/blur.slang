@@ -73,9 +73,16 @@ void blurMain(uint3 tid: SV_DispatchThreadID) {
 
     const uint at = xy.y * params.dstStride + xy.x;
     if (params.radius == 0u || params.sigma <= 0.0) {
-        const int cx = clamp(sourceX, 0, int(params.srcWidth) - 1);
-        const int cy = clamp(sourceY, 0, int(params.srcHeight) - 1);
-        dst[at] = src[uint(cy) * params.srcStride + uint(cx)];
+        // A straight copy, with the rule the blur below follows: outside the
+        // input there is nothing. It used to repeat the edge pixel here, so a
+        // zero-size blur over a region larger than its input grew a smear the
+        // real blur never would.
+        if (sourceX < 0 || sourceY < 0 || sourceX >= int(params.srcWidth) ||
+            sourceY >= int(params.srcHeight)) {
+            dst[at] = float4(0.0, 0.0, 0.0, 0.0);
+        } else {
+            dst[at] = src[uint(sourceY) * params.srcStride + uint(sourceX)];
+        }
         return;
     }
 
