@@ -1,9 +1,23 @@
 # The AOFX SDK
 
-**A**lternative **o**pen**FX**: our own plugin interface, for effects that run on
-the GPU through CUDA or Metal. It sits **beside** OpenFX rather than replacing
-it — the 190 installed OFX plugins keep working — and exists because OpenFX has
-no answer for a compute kernel that must hold 25 frames a second.
+**A**lternative **o**pen**FX**: a plugin interface for effects that run on the GPU
+through CUDA or Metal. It is meant to sit **beside** OpenFX in a host, not to
+replace it.
+
+OpenFX does reach GPUs. Its GPU rendering suite (`ofxGPURender.h`) covers
+OpenGL, and since OpenFX 1.5 CUDA (`kOfxImageEffectPropCudaStream`) and Metal
+(`kOfxImageEffectPropMetalRenderSupported`, `kOfxImageEffectPropMetalCommandQueue`);
+whether a given effect gets them depends on what both the host and the plugin
+implement. What AOFX offers is a smaller contract, not a capability OpenFX lacks:
+
+- **One kernel source for both backends.** A kernel is written once in Slang and
+  compiled at build time for Metal and for CUDA; the plugin never touches either
+  API.
+- **The host owns the machinery.** Buffers, scratch memory, dispatch, kept state
+  and inference runtimes are the host's; a plugin describes work and asks for
+  it.
+- **No UI toolkit or host library in the plugin.** A plugin links nothing but
+  these headers.
 
 The whole SDK is C++ headers in `sdk/include/aofx/`. A plugin links nothing but
 those headers: not the host, not Qt, not the image library. A plugin that linked

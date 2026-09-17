@@ -4,16 +4,17 @@
 //
 // WHAT IT IS FOR
 //
-// OpenFX is a C ABI designed around host-allocated CPU pixel buffers, with GPU
-// rendering bolted on afterwards as an OpenGL extension. It works, and this
-// application hosts it. But an effect that wants to run a compute kernel on
-// CUDA or Metal has to go through a graphics API to get there, and write the
-// same filter twice to reach both.
+// OpenFX is a C ABI designed around host-allocated pixel buffers. Its GPU
+// rendering suite (ofxGPURender.h) covers OpenGL and, since OpenFX 1.5, CUDA
+// and Metal -- where both the host and the plugin implement them. An effect
+// that uses those still writes its kernel once per backend and manages the
+// device API itself.
 //
-// AOFX is the other way round. An effect declares its kernels in Slang, they
+// AOFX is a smaller contract. An effect declares its kernels in Slang, they
 // are compiled at build time to PTX and to a metallib, and the host runs them
-// on whichever device the machine has. One filter, both backends, no graphics
-// API in the middle.
+// on whichever device the machine has, owning the buffers, the dispatch and
+// any inference. One filter source, both backends, no device API in the
+// plugin.
 //
 // THE VERSION HANDSHAKE, AND WHY IT IS TWO NUMBERS AND A STRING
 //
