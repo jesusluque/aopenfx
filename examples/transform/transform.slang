@@ -50,6 +50,9 @@ StructuredBuffer<float4>        src;
 RWStructuredBuffer<float4>      dst;
 ConstantBuffer<TransformParams> params;
 
+/// The Box filter's largest reach, in source pixels either side. Matched by
+/// `kBoxReach` in Transform.cpp.
+static const int kBoxReach = 32;
 static const uint kImpulse = 0u;   static const uint kBox = 1u;
 static const uint kBilinear = 2u;  static const uint kCubic = 3u;
 static const uint kKeys = 4u;      static const uint kSimon = 5u;
@@ -130,16 +133,21 @@ float4 sampleSource(float u, float v) {
         // comes straight out of the matrix rather than being guessed.
         const float wu = max(1.0, abs(params.m0) + abs(params.m1));
         const float wv = max(1.0, abs(params.m3) + abs(params.m4));
-        const int   ru = int(ceil(wu * 0.5));
-        const int   rv = int(ceil(wv * 0.5));
+        // Bounded, on both sides. A transform can scale by ten thousand, and
+        // an unbounded integration there would hang the GPU rather than be
+        // slow on it. The bound used to be on the loop's upper end only, so a
+        // large minification still started at -ru: tens of thousands of taps,
+        // averaged over a window lopsided towards negative offsets. Capping
+        // the radius itself keeps the footprint centred and at most 65 x 65,
+        // and Transform.cpp's region of interest asks for the same reach.
+        const int   ru = min(int(ceil(wu * 0.5)), kBoxReach);
+        const int   rv = min(int(ceil(wv * 0.5)), kBoxReach);
         const int   iu = int(floor(u + 0.5));
         const int   iv = int(floor(v + 0.5));
         float4 total = float4(0.0, 0.0, 0.0, 0.0);
         float  weight = 0.0;
-        // Bounded. A transform can scale by ten thousand, and an unbounded
-        // integration there would hang the GPU rather than be slow on it.
-        for (int dy = -rv; dy <= rv && dy <= 32; ++dy) {
-            for (int dx = -ru; dx <= ru && dx <= 32; ++dx) {
+        for (int dy = -rv; dy <= rv; ++dy) {
+            for (int dx = -ru; dx <= ru; ++dx) {
                 total += fetch(iu + dx, iv + dy);
                 weight += 1.0;
             }

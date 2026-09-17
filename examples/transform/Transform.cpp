@@ -157,6 +157,11 @@ struct TransformUniforms {
 };
 static_assert(sizeof(TransformUniforms) == 80, "no padding, on any compiler");
 
+/// The index of "box" in `filters()`, and its largest reach in source pixels
+/// either side. Matched by `kBox` and `kBoxReach` in transform.slang.
+constexpr int kFilterBox = 1;
+constexpr int kBoxReach = 32;
+
 const std::array<const char*, 9>& filters() {
     static const std::array<const char*, 9> kAll{
         {"impulse", "box", "bilinear", "cubic", "keys", "simon", "rifman",
@@ -367,8 +372,26 @@ public:
                 maxY = std::max(maxY, y);
             }
         }
-        // The filter's reach: a cubic reads two pixels either side.
-        const int margin = 3;
+        // The filter's reach. A cubic reads two pixels either side; Box reads
+        // its footprint, which under minification is as wide as one output
+        // pixel is in the source -- the same width the kernel computes from
+        // the same inverse matrix, capped by the same constant. A fixed margin
+        // of three starved a scaled-down picture of the ring of source pixels
+        // its edge averages over.
+        int margin = 3;
+        double filterIndex = 3.0;
+        for (const aofx::ParamValue& value : params) {
+            if (value.name == "filter" && !value.numbers.empty()) {
+                filterIndex = value.numbers.front();
+            }
+        }
+        if (static_cast<int>(filterIndex) == kFilterBox) {
+            const double wu = std::max(1.0, std::abs(back.a) + std::abs(back.b));
+            const double wv = std::max(1.0, std::abs(back.d) + std::abs(back.e));
+            const int reach = std::min(
+                kBoxReach, static_cast<int>(std::ceil(std::max(wu, wv) * 0.5)));
+            margin = std::max(margin, reach + 1);
+        }
         wanted.front() = aofx::Rect{static_cast<int>(std::floor(minX)) - margin,
                                     static_cast<int>(std::floor(minY)) - margin,
                                     static_cast<int>(std::ceil(maxX)) + margin,
