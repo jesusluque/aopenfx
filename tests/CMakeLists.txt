@@ -10,3 +10,35 @@ set_target_properties(aofx_sdk_tests PROPERTIES
     CXX_VISIBILITY_PRESET default
     VISIBILITY_INLINES_HIDDEN OFF)
 add_test(NAME aofx_sdk_tests COMMAND aofx_sdk_tests)
+
+# The build tag: it must name the standard library's ABI and quote this build's
+# container sizes. Nothing but the SDK headers is linked.
+add_executable(aofx_abi_tag_tests test_abi_tag.cpp)
+target_link_libraries(aofx_abi_tag_tests PRIVATE aofx::aofx)
+add_test(NAME aofx_abi_tag_tests COMMAND aofx_abi_tag_tests)
+
+# And the case that motivated it: libstdc++ built with the old and the new
+# string ABI. Two builds of the same source, and their tags must differ. Only
+# where the standard library is libstdc++ -- the switch exists nowhere else.
+include(CheckCXXSourceCompiles)
+check_cxx_source_compiles("
+#include <string>
+#if !defined(__GLIBCXX__)
+#error not libstdc++
+#endif
+int main() { return 0; }" AOFX_HAVE_LIBSTDCXX)
+if(AOFX_HAVE_LIBSTDCXX)
+    foreach(abi 0 1)
+        add_executable(aofx_abi_tag_cxx11abi${abi} test_abi_tag.cpp)
+        target_link_libraries(aofx_abi_tag_cxx11abi${abi} PRIVATE aofx::aofx)
+        target_compile_definitions(aofx_abi_tag_cxx11abi${abi}
+            PRIVATE _GLIBCXX_USE_CXX11_ABI=${abi})
+    endforeach()
+    add_test(NAME aofx_abi_tag_differs
+             COMMAND ${CMAKE_COMMAND}
+                     -DFIRST=$<TARGET_FILE:aofx_abi_tag_cxx11abi0>
+                     -DSECOND=$<TARGET_FILE:aofx_abi_tag_cxx11abi1>
+                     -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CompareTags.cmake)
+else()
+    message(STATUS "aopenfx: not libstdc++, so the old/new string ABI tag test is skipped")
+endif()
