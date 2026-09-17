@@ -103,11 +103,34 @@ elseif(GPE_SLANGC AND GPE_BACKEND STREQUAL "CUDA")
 endif()
 
 # --- gpe's reflection trailer, when a checkout is named --------------------
+#
+# The trailer is what lets a host refuse a kernel dispatch whose buffer element
+# sizes or uniform block size disagree with what the kernel declared. Without
+# it a .slang struct and its C++ mirror can drift apart and the only symptom is
+# a black picture. It is not built into the SDK yet (see docs/ROADMAP.md), so
+# for now it comes from a gpe checkout, and a build without one says so loudly.
 set(AOFX_GPE_DIR "" CACHE PATH "A gpe checkout, for the kernel reflection trailer (optional)")
+option(AOFX_REQUIRE_REFLECTION
+       "Fail the configure when kernels would be built without a reflection trailer" OFF)
+set(AOFX_HAVE_REFLECTION FALSE)
 if(AOFX_GPE_DIR AND EXISTS "${AOFX_GPE_DIR}/cmake/KernelTrailer.cmake")
     # The name AofxKernel.cmake reads.
     set(AOFX_HOST_GPE_DIR "${AOFX_GPE_DIR}")
+    set(AOFX_HAVE_REFLECTION TRUE)
     message(STATUS "aopenfx: kernels carry gpe's reflection trailer")
 elseif(AOFX_GPE_DIR)
     message(WARNING "aopenfx: ${AOFX_GPE_DIR} has no cmake/KernelTrailer.cmake")
+endif()
+
+if(AOFX_HAVE_KERNELS AND NOT AOFX_HAVE_REFLECTION)
+    set(noTrailer
+        "aopenfx: kernels are built WITHOUT a reflection trailer. A host cannot "
+        "check a dispatch against what the kernel declared, so a uniform struct "
+        "that disagrees with its C++ mirror renders black instead of failing. "
+        "Pass -DAOFX_GPE_DIR=<gpe checkout> to add it.")
+    if(AOFX_REQUIRE_REFLECTION)
+        message(FATAL_ERROR ${noTrailer} " (AOFX_REQUIRE_REFLECTION is ON)")
+    else()
+        message(WARNING ${noTrailer})
+    endif()
 endif()
