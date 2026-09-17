@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Every header compiles on its own
+        run: |
+          for header in sdk/include/aofx/*.h; do
+            echo "$header"
+            g++ -std=c++20 -Wall -Wextra -Werror -fsyntax-only -x c++ -Isdk/include "$header"
+          done
+
+      # No CUDA toolkit and no slangc on the runner, so the kernel backend is
+      # "none": the examples are skipped with a message and the CPU tests run.
+      # Kernels are verified on machines with a GPU (see README).
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
