@@ -167,7 +167,14 @@ namespace aofx {
 /// moves; what changes is the *contents* of the tag, and the host compares
 /// tags, so a host and a bundle built against 24 and 25 no longer match and
 /// both are rebuilt.
-inline constexpr int kAbiVersion = 25;
+/// 26: `Gpu::engines` and `Gpu::render` -- a scene handed to a renderer the
+/// host owns, its planes crossing in both directions on the device.
+/// `EngineRequest`, `EngineOutput`, `EngineResult` and `PlaneFormat` are new
+/// types nothing older reads. Two virtuals appended to the host interface,
+/// the argument of 2: defaulted, so no effect changes, and every bundle is
+/// rebuilt all the same, because a vtable two slots short is a call into the
+/// wrong function.
+inline constexpr int kAbiVersion = 26;
 
 /// What this translation unit was compiled with.
 ///

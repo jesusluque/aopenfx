@@ -24,6 +24,10 @@
 #include "aofx/Effect.h"
 #include "aofx/Types.h"
 
+namespace gpe {
+class PooledDevice;
+}
+
 namespace aofx::host {
 
 /// Where the host's own lines go.
@@ -87,6 +91,29 @@ public:
     [[nodiscard]] virtual bool inferred(ModelId) = 0;
 };
 
+/// A renderer the program brings: the host side of `Gpu::render`.
+///
+/// The host never names one. It answers `engines()` from the list a program
+/// declared, checks a request before handing it over -- the engine by name,
+/// every output buffer valid and live, every output the same rectangle, every
+/// format one the engine produces -- and refuses by name otherwise. What is
+/// left for the engine is the drawing.
+class EngineBackend {
+public:
+    virtual ~EngineBackend() = default;
+
+    /// What `EngineRequest::engine` matches.
+    [[nodiscard]] virtual std::string name() const = 0;
+    /// Which formats it writes; anything else is refused before it is asked.
+    [[nodiscard]] virtual bool produces(PlaneFormat) const = 0;
+    /// On the host's GPU thread, inside the render that asked. The planes are
+    /// live device buffers of `device` for the duration of the call and no
+    /// longer; the engine ends with work on that device's queue, so the
+    /// render's own wait covers it.
+    [[nodiscard]] virtual EngineResult render(const EngineRequest& request,
+                                              gpe::PooledDevice& device) = 0;
+};
+
 /// What this program brings. Null means "not available", and the runner says
 /// so by name, once per verb per render at most.
 ///
@@ -96,13 +123,15 @@ struct Capabilities {
     Logger*        log = nullptr;
     MediaBackend* media = nullptr;
     ModelBackend* models = nullptr;
+    /// The renderers, by the names they answer to. Empty is a host with none.
+    std::vector<EngineBackend*> engines;
     /// An identifier in an older spelling, mapped to the one the bundle
     /// declares, so a document that has not caught up still finds its effect.
     /// Identity when unset.
     std::function<std::string(const std::string&)> canonicalId;
 
     /// What is here, for a listing: "kernels", "keep", "borrow", "media",
-    /// "models" -- the last two only when a provider is set.
+    /// "models" when a backend is set, and "engine:<name>" per renderer.
     [[nodiscard]] std::vector<std::string> names() const;
 };
 

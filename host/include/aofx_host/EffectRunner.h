@@ -113,6 +113,11 @@ public:
                      const std::vector<aofx::Buffer>& outputs,
                      const std::vector<aofx::ModelIo>& outputShapes) override;
 
+    // --- the engine verbs: the program's renderers, checked, or "none" -------
+
+    [[nodiscard]] std::vector<std::string> engines() const override;
+    [[nodiscard]] aofx::EngineResult render(const aofx::EngineRequest& request) override;
+
     // --- what the host keeps for the program --------------------------------
 
     /// Which effect instance this runner renders, so a model provider can note

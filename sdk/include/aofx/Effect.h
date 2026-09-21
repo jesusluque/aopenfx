@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "aofx/Descriptor.h"
@@ -61,6 +62,57 @@ struct ModelIo {
     [[nodiscard]] constexpr int quads() const noexcept {
         return (batch * channels * height * width + 3) / 4;
     }
+};
+
+/// A scene handed to a renderer the host owns. See `Gpu::render`.
+struct EngineRequest {
+    /// Which renderer, by the name the host knows it under (`Gpu::engines`).
+    /// An unknown name is refused by name.
+    std::string engine;
+    /// The scene as text, in the host's own scene format -- the same text a
+    /// scene node hands any renderer. A line an engine does not know is
+    /// ignored; one it cannot honour is a refusal.
+    std::string scene;
+    /// Named numbers, read by name: "samples", "denoise", "shutter"... Absent
+    /// is the engine's default; unknown is ignored.
+    std::vector<std::pair<std::string, double>> settings;
+    /// Planes the engine may read, named as the request's inputs are. Read on
+    /// the device; nothing is copied.
+    std::vector<InputPlane> inputs;
+    /// Planes the engine writes, each with what it must contain. The first is
+    /// the picture. All the same rectangle.
+    std::vector<EngineOutput> outputs;
+    double time = 0.0;
+    double scaleX = 1.0;
+    double scaleY = 1.0;
+
+    [[nodiscard]] double setting(const std::string& name, double fallback) const noexcept {
+        for (const auto& [key, value] : settings) {
+            if (key == name) {
+                return value;
+            }
+        }
+        return fallback;
+    }
+    [[nodiscard]] const InputPlane* input(const std::string& clip,
+                                          const std::string& plane = "Color") const noexcept {
+        for (const InputPlane& one : inputs) {
+            if (one.clip == clip && one.plane == plane) {
+                return &one;
+            }
+        }
+        return nullptr;
+    }
+};
+
+/// What came of `Gpu::render`.
+struct EngineResult {
+    bool        ok = false;
+    /// Why not, in a sentence somebody can act on.
+    std::string complaint;
+    /// Numbers the engine hands back -- how long it took, what it drew -- as
+    /// `RenderRequest::produced` carries them.
+    std::vector<std::pair<std::string, std::vector<float>>> produced;
 };
 
 /// The GPU, as much of it as an effect gets.
@@ -399,6 +451,29 @@ public:
                                            int64_t /*sourceSamples*/, const AudioFormat&,
                                            int64_t /*outFrames*/, AudioBlock& /*out*/) {
         return false;
+    }
+
+    // --- asking the host to draw a scene ------------------------------------
+    //
+    // A renderer is the third large, stateful thing -- after a decoder and a
+    // network -- that cannot live in an effect: it opens a device, and the
+    // first line of this file says the plugin never does. So the host owns it
+    // and the effect names it, hands it the scene as text, and gets its
+    // pictures back as planes -- on the device, nothing copied in either
+    // direction. The host does the crossing; the plugin never sees a handle.
+
+    /// The renderers this host has, by name. Empty is a normal answer: a
+    /// viewer built without one, or a host with nothing to draw with.
+    [[nodiscard]] virtual std::vector<std::string> engines() const { return {}; }
+
+    /// Draws `scene` with `engine` into `outputs`, reading `inputs`.
+    ///
+    /// Synchronous as `run` is: queued in order on the host's device, and
+    /// finished when this render's `process` returns. Not ok, with the
+    /// reason in `complaint`, for an engine the host does not have, an
+    /// output format the engine does not produce, or a scene it cannot draw.
+    [[nodiscard]] virtual EngineResult render(const EngineRequest& /*request*/) {
+        return EngineResult{false, "this host has no render engine", {}};
     }
 };
 

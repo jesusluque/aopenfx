@@ -17,6 +17,11 @@ std::vector<std::string> Capabilities::names() const {
     if (models != nullptr) {
         out.emplace_back("models");
     }
+    for (const EngineBackend* engine : engines) {
+        if (engine != nullptr) {
+            out.emplace_back("engine:" + engine->name());
+        }
+    }
     return out;
 }
 

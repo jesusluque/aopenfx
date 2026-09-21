@@ -71,6 +71,42 @@ public:
     [[nodiscard]] bool process(const aofx::RenderRequest&) override { return true; }
 };
 
+/// A host with nothing but the pure verbs answered: what ABI 26's two engine
+/// verbs default to when a host has not heard of them.
+class NoEngineGpu final : public aofx::Gpu {
+public:
+    [[nodiscard]] aofx::ClipId clip(const std::string&) override { return aofx::kInvalidClip; }
+    [[nodiscard]] aofx::ClipInfo clipInfo(aofx::ClipId) const override { return {}; }
+    bool decode(aofx::ClipId, int, const aofx::Buffer&) override { return false; }
+    bool decodeNext(aofx::ClipId, int, const aofx::Buffer&, bool&, bool&) override {
+        return false;
+    }
+    [[nodiscard]] aofx::KernelId load(const std::string&) override { return aofx::kInvalidKernel; }
+    bool run(aofx::KernelId, aofx::Grid, const std::vector<aofx::Buffer>&, const void*,
+             size_t) override {
+        return false;
+    }
+    [[nodiscard]] aofx::Buffer scratch(int, int) override { return {}; }
+    [[nodiscard]] aofx::Buffer keep(const std::string&, const void*, size_t) override {
+        return {};
+    }
+    void drop(const std::string&) override {}
+    [[nodiscard]] aofx::ModelId model(const std::string&) override { return aofx::kInvalidModel; }
+    [[nodiscard]] aofx::ModelIo modelInput(aofx::ModelId, int) const override { return {}; }
+    [[nodiscard]] aofx::ModelIo modelOutput(aofx::ModelId, int) const override { return {}; }
+    bool infer(aofx::ModelId, const std::vector<aofx::Buffer>&,
+               const std::vector<aofx::Buffer>&) override {
+        return false;
+    }
+    [[nodiscard]] bool inferred(aofx::ModelId) override { return false; }
+    [[nodiscard]] bool read(const aofx::Buffer&, void*, size_t) override { return false; }
+    bool inferShaped(aofx::ModelId, const std::vector<aofx::Buffer>&,
+                     const std::vector<aofx::ModelIo>&, const std::vector<aofx::Buffer>&,
+                     const std::vector<aofx::ModelIo>&) override {
+        return false;
+    }
+};
+
 }   // namespace
 
 AOFX_EXPORT_EFFECTS(Pretend)
@@ -131,6 +167,38 @@ int main() {
           "a component past the end falls back");
     check(request.number("added-later", 3.0) == 3.0,
           "and so does a parameter the script never heard of");
+
+    // --- asking the host to draw a scene (ABI 26) ---------------------------
+    //
+    // A host that has not heard of engines answers with the defaults, and an
+    // effect written against them can tell -- by name, not by crashing.
+    {
+        NoEngineGpu bare;
+        aofx::Gpu&  gpu = bare;
+        check(gpu.engines().empty(), "a host with no engine lists none");
+        const aofx::EngineResult refused = gpu.render(aofx::EngineRequest{});
+        check(!refused.ok, "and refuses to render");
+        check(!refused.complaint.empty(), "with a reason");
+
+        aofx::EngineRequest request;
+        request.engine = "nothing";
+        request.settings = {{"samples", 4.0}, {"denoise", 1.0}};
+        check(request.setting("samples", 1.0) == 4.0, "a setting reads back by name");
+        check(request.setting("shutter", 0.5) == 0.5, "and an absent one falls back");
+        aofx::InputPlane plate;
+        plate.clip = "Source";
+        request.inputs.push_back(plate);
+        check(request.input("Source") != nullptr, "an input is found by clip");
+        check(request.input("Source", "depth") == nullptr, "and by plane");
+        check(request.input("Tex1") == nullptr, "and an absent one is null");
+        // The enumerator values are the agreement between a host and an
+        // effect built at different times; a renumbering would be a
+        // different plane under the same name.
+        static_assert(static_cast<int>(aofx::PlaneFormat::Color) == 0, "Color is 0");
+        static_assert(static_cast<int>(aofx::PlaneFormat::Crypto) == 5, "Crypto is 5");
+        check(aofx::EngineOutput{}.format == aofx::PlaneFormat::Color,
+              "an output is the picture unless said otherwise");
+    }
 
     // --- shapes -------------------------------------------------------------
     //

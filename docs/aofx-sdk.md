@@ -444,6 +444,42 @@ to become usable, and both are worth seeing without opening it.
 
 Full story in [inference.md](inference.md).
 
+## Asking the host to draw a scene
+
+Two more verbs, since ABI 26, for a node whose picture comes from a renderer
+the host owns — a path tracer, a splat rasteriser, a stage renderer — which is
+the third large, stateful thing after a decoder and a network that cannot live
+in a plugin, because it opens a device and the plugin never does:
+
+```cpp
+std::vector<std::string> engines() const;
+EngineResult render(const EngineRequest&);
+```
+
+`engines()` names what this host has; empty is a normal answer, and a node
+that needs one refuses with a sentence saying which. `render` takes an
+`EngineRequest`: the engine by name, the scene as text in the host's own scene
+format (the same text a scene node hands any renderer), named numbers for the
+settings, the planes the engine may read, and the planes it must write — each
+with a `PlaneFormat` saying what goes into the four floats of every pixel:
+
+| format | what is in the plane |
+|---|---|
+| `Color` | the picture, premultiplied linear RGBA |
+| `Depth` | view z in R (G and B the same), A = 1 |
+| `Normal` | a world-space normal in RGB |
+| `Id` | an integer per pixel, its bits in R; coverage in A |
+| `Vector` | motion in RG, in pixels of this render |
+| `Crypto` | a Cryptomatte layer: (id, coverage) pairs, two ranks a pixel |
+
+A format the engine does not produce is refused by name, never reinterpreted.
+Everything crosses on the device: the host binds the planes to the renderer
+and the renderer's output to the planes, and the plugin never sees a handle.
+Synchronous as `run` is — finished when `process` returns.
+
+The scene text is the host's, not the SDK's: a host says what its scene nodes
+write, and an engine that does not know a line ignores it.
+
 ## Doing the expensive thing only sometimes
 
 `request.due(every)` answers "should this frame do the expensive work", and it

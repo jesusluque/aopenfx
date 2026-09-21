@@ -509,6 +509,85 @@ void EffectRunner::closeRecorder(aofx::RecorderId id) {
     }
 }
 
+// --- engines: the program's renderers, checked, or "none" --------------------
+
+std::vector<std::string> EffectRunner::engines() const {
+    std::vector<std::string> out;
+    for (const EngineBackend* engine : impl_->capabilities->engines) {
+        if (engine != nullptr) {
+            out.push_back(engine->name());
+        }
+    }
+    return out;
+}
+
+aofx::EngineResult EffectRunner::render(const aofx::EngineRequest& request) {
+    aofx::EngineResult result;
+    const auto refuse = [&](std::string why) {
+        result.ok = false;
+        result.complaint = std::move(why);
+        complain(result.complaint);
+        return result;
+    };
+
+    EngineBackend* engine = nullptr;
+    for (EngineBackend* one : impl_->capabilities->engines) {
+        if (one != nullptr && one->name() == request.engine) {
+            engine = one;
+            break;
+        }
+    }
+    if (engine == nullptr) {
+        const std::vector<std::string> have = engines();
+        if (have.empty()) {
+            return refuse("this host has no render engine");
+        }
+        std::string list;
+        for (const std::string& name : have) {
+            list += (list.empty() ? "" : ", ") + name;
+        }
+        return refuse("no engine named '" + request.engine + "' in this host (it has: " +
+                      list + ")");
+    }
+    if (request.outputs.empty()) {
+        return refuse("render asked for no output plane");
+    }
+    // Every output valid and live on this device, all one rectangle, and
+    // each format one the engine produces. Checked here, once, so no engine
+    // has to and none can forget to.
+    const aofx::Rect& rect = request.outputs.front().plane.buffer.rect;
+    for (const aofx::EngineOutput& output : request.outputs) {
+        const aofx::Buffer& buffer = output.plane.buffer;
+        if (!buffer.isValid() ||
+            impl_->device->backendBuffer(static_cast<gpe::BufferId>(buffer.device)) == 0) {
+            return refuse("output '" + output.plane.plane + "' is not a live device buffer");
+        }
+        if (buffer.rect.x1 != rect.x1 || buffer.rect.y1 != rect.y1 ||
+            buffer.rect.x2 != rect.x2 || buffer.rect.y2 != rect.y2) {
+            return refuse("output '" + output.plane.plane +
+                          "' is not the rectangle the first output is");
+        }
+        if (!engine->produces(output.format)) {
+            return refuse("engine '" + request.engine + "' does not produce format " +
+                          std::to_string(static_cast<int>(output.format)) + " asked of output '" +
+                          output.plane.plane + "'");
+        }
+    }
+    for (const aofx::InputPlane& input : request.inputs) {
+        if (!input.buffer.isValid()) {
+            return refuse("input '" + input.clip + "' is not a device buffer");
+        }
+    }
+    result = engine->render(request, *impl_->device);
+    if (!result.ok) {
+        if (result.complaint.empty()) {
+            result.complaint = "engine '" + request.engine + "' could not draw the scene";
+        }
+        complain(result.complaint);
+    }
+    return result;
+}
+
 // --- models: the program's provider, or "not available" ---------------------
 
 aofx::ModelId EffectRunner::model(const std::string& name) {
