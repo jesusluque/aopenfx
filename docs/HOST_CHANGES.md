@@ -58,7 +58,7 @@ the verb cut out.
   the channel-restore kernel and the Apple page wrapping are `aofx::host`'s.
   The program keeps its translation of `aofx::EffectDesc` into whatever its
   menus speak, and moves the bodies of its media and model verbs behind
-  `MediaProvider` and `ModelProvider`.
+  `MediaBackend` and `ModelBackend`.
 - **`run` checks a dispatch against the kernel's reflection** (buffer count,
   uniform bytes) when the blob carries a trailer, and refuses by name. A
   program whose kernels were built without one sees no change.

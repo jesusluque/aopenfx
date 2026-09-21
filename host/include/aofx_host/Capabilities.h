@@ -45,9 +45,9 @@ public:
 /// The contract is the SDK's, verb for verb; what a provider adds is the
 /// decoder behind it. Ids are the provider's to mint and to keep valid for the
 /// life of the process, which is what an effect that holds one expects.
-class MediaProvider {
+class MediaBackend {
 public:
-    virtual ~MediaProvider() = default;
+    virtual ~MediaBackend() = default;
 
     [[nodiscard]] virtual ClipId   clip(const std::string& path) = 0;
     [[nodiscard]] virtual ClipInfo clipInfo(ClipId) const = 0;
@@ -70,9 +70,9 @@ public:
 /// models can let go of the ones a given node used. Ids are the provider's,
 /// valid for the life of the process; a model it has let go of answers false
 /// to everything and is asked for by name again.
-class ModelProvider {
+class ModelBackend {
 public:
-    virtual ~ModelProvider() = default;
+    virtual ~ModelBackend() = default;
 
     [[nodiscard]] virtual ModelId model(const std::string& name,
                                         const std::string& askedBy) = 0;
@@ -94,8 +94,8 @@ public:
 /// in the program is the natural home, since there is one host per process.
 struct Capabilities {
     Logger*        log = nullptr;
-    MediaProvider* media = nullptr;
-    ModelProvider* models = nullptr;
+    MediaBackend* media = nullptr;
+    ModelBackend* models = nullptr;
     /// An identifier in an older spelling, mapped to the one the bundle
     /// declares, so a document that has not caught up still finds its effect.
     /// Identity when unset.
