@@ -26,7 +26,11 @@
 # ABI: an AOFX plugin is built with the host's toolchain or not at all.
 
 # The reflection trailer's generator, beside this file; see AofxKernelTrailer.cmake.
-set(_AOFX_KERNEL_TRAILER "${CMAKE_CURRENT_LIST_DIR}/AofxKernelTrailer.cmake")
+# A cache entry rather than a directory variable: the function below is global
+# once this file is included anywhere, and a program that includes it once and
+# calls aofx_add_kernel from other directories must still find the generator.
+set(_AOFX_KERNEL_TRAILER "${CMAKE_CURRENT_LIST_DIR}/AofxKernelTrailer.cmake"
+    CACHE INTERNAL "Where aofx_add_kernel finds the kernel trailer generator")
 option(AOFX_KERNEL_REFLECTION
        "Append a reflection trailer (thread groups, buffer and uniform sizes) to every kernel" ON)
 
