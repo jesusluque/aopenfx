@@ -7,7 +7,8 @@
 # a byte array in the plugin's own binary, not a file beside it -- a bundle with
 # loose kernels is a bundle to sign, to install, and to have half of.
 #
-#   aofx_add_kernel(<target> <name> ENTRY <entryPoint> [ENTRY <entryPoint>...])
+#   aofx_add_kernel(<target> <name> ENTRY <entryPoint> [ENTRY <entryPoint>...]
+#                   [SOURCE <file.slang>])
 #
 # More than one entry point compiles into a single blob. That is not a
 # convenience: entry points in one file share their buffer declarations and
@@ -15,7 +16,8 @@
 # separately would be several copies of one layout, free to drift apart. The
 # host registers the blob once and `Gpu::load` finds each entry by name.
 #
-# Compiles <name>.slang from the current source directory and generates
+# Compiles <name>.slang from the current source directory -- or SOURCE, for a
+# kernel that lives under a subdirectory of its own -- and generates
 # aofx_kernels_<name>.h next to it in the build tree, holding
 # `k_<name>` and `k_<name>Bytes`. Include it and hand both to KernelDesc.
 #
@@ -29,7 +31,7 @@ option(AOFX_KERNEL_REFLECTION
        "Append a reflection trailer (thread groups, buffer and uniform sizes) to every kernel" ON)
 
 function(aofx_add_kernel target name)
-    cmake_parse_arguments(ARG "" "" "ENTRY" ${ARGN})
+    cmake_parse_arguments(ARG "" "SOURCE" "ENTRY" ${ARGN})
     if(NOT ARG_ENTRY)
         message(FATAL_ERROR "aofx_add_kernel(${name}) needs ENTRY")
     endif()
@@ -44,7 +46,12 @@ function(aofx_add_kernel target name)
             "compute backend, so there is nothing to compile a kernel for.")
     endif()
 
-    set(source "${CMAKE_CURRENT_SOURCE_DIR}/${name}.slang")
+    if(ARG_SOURCE)
+        get_filename_component(source "${ARG_SOURCE}" ABSOLUTE
+                               BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    else()
+        set(source "${CMAKE_CURRENT_SOURCE_DIR}/${name}.slang")
+    endif()
     set(dir "${CMAKE_CURRENT_BINARY_DIR}/kernels")
     file(MAKE_DIRECTORY "${dir}")
     set(blob "${dir}/${name}.blob")

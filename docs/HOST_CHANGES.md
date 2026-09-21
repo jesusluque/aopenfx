@@ -38,6 +38,40 @@ boundaries in the blurred picture are where they are in the unblurred one.
 What changed in the SDK that a host implementing it must follow. Newest first.
 Each entry says what to change and how to tell it worked.
 
+## The reference host lives here: `host/`
+
+There is now one host, and it is in this repository beside the SDK. A program
+that loads AOFX bundles adds `host/` after gpe and after `sdk/` and links
+`aofx::host`; what it brings -- a logger, a media stack, an inference runtime,
+a rule for identifiers in an older spelling -- it declares in an
+`aofx::host::Capabilities` it keeps alive for the process. A verb the program
+declared nothing for answers "not available in this host, because it declares
+no <media|model> capability", from this code and not from a copy of it with
+the verb cut out.
+
+- **`kAbiVersion` does not move.** This is a move, not a change of shape: no
+  struct, vtable or entry point is different, and a bundle built before it
+  loads after it.
+- **A program with a host of its own retires it**: the registry (discovery,
+  the ABI and build-tag gates, kernel registration), the runner's device
+  verbs (load, run, scratch, keep, drop, borrow, importFd, read, publish),
+  the channel-restore kernel and the Apple page wrapping are `aofx::host`'s.
+  The program keeps its translation of `aofx::EffectDesc` into whatever its
+  menus speak, and moves the bodies of its media and model verbs behind
+  `MediaProvider` and `ModelProvider`.
+- **`run` checks a dispatch against the kernel's reflection** (buffer count,
+  uniform bytes) when the blob carries a trailer, and refuses by name. A
+  program whose kernels were built without one sees no change.
+- **The channel-restore kernel is `aofx.host.channels`** (entry
+  `channelsMain`), a neutral name; a program that dispatched it under a name
+  of its own uses `aofx::host::kChannelsKernel` now.
+- `aofx_add_kernel` gained an optional `SOURCE <file>`, for a kernel that
+  lives under a subdirectory. Nothing in the headers moved.
+
+Check: two programs built with the same toolchain list the same bundles with
+the same build tag, and a bundle refused in one is refused in the other with
+the same sentence.
+
 ## ABI 25 — the build tag carries the standard library's ABI
 
 `aofx::buildTag()` (`sdk/include/aofx/Version.h`) now includes the standard
