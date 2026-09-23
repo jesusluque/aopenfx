@@ -20,6 +20,7 @@ a host built against the same ABI.
 | `docs/aofx-sdk.md` | The SDK reference |
 | `docs/HOST_CHANGES.md` | What a host implementing the SDK must change, per version |
 | `docs/ROADMAP.md` | Designed or wanted, not scheduled |
+| `docs/OFX_BRIDGE.md` | A design: AOFX effects inside an OpenFX host, with a data channel beside the picture |
 
 The examples, and what each shows:
 
