@@ -103,6 +103,13 @@ this is an extension (`FnOfxImageEffectPlaneSuite`, implemented by Nuke and
 Natron) and not part of the standard. A host without it cannot carry the
 channel, and the bridge runs there in RGBA-only mode (below).
 
+**The catch, with GPU rendering required.** The hosts known to implement
+the plane suite (Nuke, Natron) are not the ones known to render OpenFX on
+CUDA or Metal (Resolve is), and a host needs both for the full design. This
+has to be checked host by host before anything is built; if no target host
+has both, aofxData needs another carrier -- one that travels in the device
+memory the host already passes between nodes, with no plane suite behind it.
+
 **What it holds.** A small picture, not a frame-sized one: a header and a
 payload, written as float texels.
 
@@ -134,11 +141,10 @@ of `aofx::Gpu` -- and one registry of device buffers.
 - **Eviction is least recently used, under a budget.** A key that is gone
   is not an error: the node that needs it asks for its input again, which
   re-renders the upstream node, which puts it back. Slower, never wrong.
-- **The picture on the device is kept too.** Each node's RGBA result is
-  registered under its key before it is copied out for the host. The next
-  node checks the key in its input's aofxData and, if the buffer is still
-  there, uses it rather than uploading the host's copy. The host gets its
-  picture; the chain never pays to bring it back.
+- **The picture is not in it.** RGBA travels in the host's own device
+  memory (see "Pixels never leave the device"), so the next node reads its
+  input where the host put it. The registry holds only what the host has
+  no clip for: extra planes and kept buffers.
 
 ## `request.instance`
 
@@ -210,11 +216,13 @@ break a tangent, drag a feather -- is most of a roto tool. It comes after
 the point, ring and boxes, and until then a Shape parameter is edited as
 its numbers.
 
-**Boxes are drawn from the CPU.** The overlay does not read the device while
-it draws. A producer already reads its boxes back once a frame
-(`attachedBoxes`, 512 bytes, see `aofx/Boxes.h`); the bridge keeps that copy
-in the registry under the instance and the frame, and the overlay draws from
-there.
+**Boxes are drawn from numbers the producer already attached.** The overlay
+does not read the device while it draws. A producer already reads its boxes
+back once a frame for everything that is not a kernel (`attachedBoxes`, 512
+bytes, see `aofx/Boxes.h`); the bridge keeps those numbers in the registry
+under the instance and the frame, and the overlay draws from them. That is
+coordinates for a drawing, not pixels: no picture is processed off the
+device.
 
 Where a host draws its own handle for an `XYAbsolute` parameter, a node would
 get two. The bridge declares its positions as plain doubles in that host and
@@ -246,18 +254,33 @@ exactly as in a host with the suite. Effects that need the channel -- a
 tracker reading a detector's boxes -- say that they cannot run here and
 refuse, rather than render without it.
 
-## Where the pixels come from
+## Pixels never leave the device
 
-- **The host's device memory**, where the host offers OpenFX 1.5 CUDA or
-  Metal rendering: the bridge dispatches on the host's stream or queue and
-  nothing is copied.
-- **Host memory otherwise**: the first node uploads, each node downloads its
-  RGBA for the host, and the registry spares every node but the first the
-  upload.
+AOFX does not work on the CPU, and the bridge has no CPU path: no upload, no
+download, no fallback.
+
+- **The host must render on the GPU.** Each node declares OpenFX 1.5 CUDA
+  or Metal rendering (`kOfxImageEffectPropCudaRenderSupported`,
+  `kOfxImageEffectPropMetalRenderSupported`) and nothing else. The host
+  hands it device memory and its own stream or queue; the bridge loads the
+  kernels in that context and dispatches on that stream, so nothing waits
+  and nothing crosses the bus.
+- **A render the host offers on the CPU is refused**, with a message that
+  says the node needs GPU rendering and where the host turns it on. A node
+  that quietly copied to the device and back would render, and would be
+  the slowest node in the graph with nothing to say why.
+- **A host without GPU rendering for OpenFX does not get the bridge.** It is
+  a host the bridge is not for, in the same way a host without the plane
+  suite gets no aofxData.
+- **One device.** The bridge's engine runs on the device and context the
+  host gives it. A host that hands two nodes buffers on two different
+  devices is refused rather than bridged with a copy.
 
 ## Open questions
 
-- Which hosts: the plane suite decides whether the channel exists at all.
+- Which hosts: GPU rendering for OpenFX decides whether the bridge runs at
+  all, and the plane suite whether the channel exists. A target host needs
+  both, and none is known yet to have both.
 - Whether each target host loads a plugin's nodes in one process.
 - How each target host caches plugin descriptions, and what makes it look
   again after a `.aofx` is added.
