@@ -537,6 +537,14 @@ struct EffectDesc {
         }
         return nullptr;
     };
+    const auto clipNamed = [&effect](const std::string& name) {
+        for (const ClipDesc& clip : effect.inputs) {
+            if (clip.name == name) {
+                return true;
+            }
+        }
+        return false;
+    };
     // What `{i}` becomes for the purpose of checking: the first item, which
     // every pool has.
     const auto firstItem = [](std::string name) {
@@ -566,17 +574,60 @@ struct EffectDesc {
             continue;
         }
 
+        // The space, and so how many numbers a place has.
+        if (gizmo.space == GizmoSpace::Parent) {
+            const GizmoDesc* up = gizmoNamed(gizmo.parent);
+            if (up == nullptr ||
+                (up->kind != GizmoKind::Frame && up->kind != GizmoKind::Frame3D)) {
+                problems.push_back(who + " is placed in '" + gizmo.parent +
+                                   "', which is not a Frame or Frame3D of this effect");
+                continue;
+            }
+        } else if (!gizmo.parent.empty()) {
+            problems.push_back(who + " names a parent but is not in GizmoSpace::Parent");
+        }
+        const int dimensions = gizmoDimensions(effect.gizmos, gizmo);
+        if (dimensions == 0) {
+            problems.push_back(who + " is in a chain of frames that loops or breaks");
+            continue;
+        }
+        if (!gizmoWorksIn(gizmo.kind, dimensions)) {
+            problems.push_back(who + (dimensions == 3 ? " is a 2D kind in a 3D space"
+                                                      : " is a 3D kind in a 2D space"));
+            continue;
+        }
+
         const std::vector<GizmoSlot> slots = gizmoSlots(gizmo.kind);
-        for (const GizmoSlot& slot : slots) {
+        const auto boundCount = [&gizmo](const char* name) {
             int bound = 0;
             for (const GizmoBinding& binding : gizmo.bindings) {
-                bound += binding.slot == slot.name ? 1 : 0;
+                bound += binding.slot == name ? 1 : 0;
             }
+            return bound;
+        };
+        for (const GizmoSlot& slot : slots) {
+            const int bound = boundCount(slot.name);
             if (bound == 0 && !slot.optional) {
                 problems.push_back(who + " leaves slot '" + slot.name + "' unbound");
             }
-            if (bound > 1 && slot.width != 0) {
+            if (bound > 1 && !slot.list) {
                 problems.push_back(who + " binds slot '" + slot.name + "' more than once");
+            }
+        }
+        if (gizmo.kind == GizmoKind::Frame3D || gizmo.kind == GizmoKind::Camera) {
+            const bool matrix = boundCount("matrix") > 0;
+            const bool parts = boundCount("translate") + boundCount("rotate") +
+                                   boundCount("scale") + boundCount("pivot") > 0;
+            if (matrix && parts) {
+                problems.push_back(who + " binds 'matrix' and the slots it replaces");
+            }
+            if (gizmo.kind == GizmoKind::Camera && !matrix &&
+                boundCount("translate") == 0) {
+                problems.push_back(who + " is a Camera with neither 'translate' nor 'matrix'");
+            }
+            const int order = static_cast<int>(gizmo.rotationOrder);
+            if (order < 0 || order > static_cast<int>(xform::RotationOrder::ZYX)) {
+                problems.push_back(who + " has a rotation order this SDK does not know");
             }
         }
 
@@ -607,6 +658,14 @@ struct EffectDesc {
                 problems.push_back(where + " must be an attachment: a drawing is computed");
                 continue;
             }
+            if (!binding.clip.empty()) {
+                if (binding.attachment.empty()) {
+                    problems.push_back(where + " names a clip but no attachment to read on it");
+                } else if (!clipNamed(binding.clip)) {
+                    problems.push_back(where + " reads clip '" + binding.clip +
+                                       "', which is not an input of this effect");
+                }
+            }
             if (!std::isfinite(binding.scale) || binding.scale == 0.0 ||
                 !std::isfinite(binding.offset)) {
                 problems.push_back(where + " has a scale that cannot be undone");
@@ -615,14 +674,14 @@ struct EffectDesc {
                               binding.attachment.find("{i}") != std::string::npos)) {
                 problems.push_back(where + " uses {i} on a gizmo that does not repeat");
             }
+            const int wanted = gizmoSlotWidth(*slot, dimensions);
+            const bool whole = !slot->list && wanted == 0;   // a drawing's strokes
             if (binding.param.empty()) {
-                if (binding.attachment.empty() && slot->width != 0 &&
-                    binding.constant.size() != static_cast<size_t>(slot->width)) {
+                const size_t size = binding.constant.size();
+                if (binding.attachment.empty() && !whole &&
+                    (slot->list ? size % static_cast<size_t>(dimensions) != 0
+                                : size != static_cast<size_t>(wanted))) {
                     problems.push_back(where + " has a constant of the wrong size");
-                }
-                if (binding.attachment.empty() && slot->width == 0 &&
-                    binding.constant.size() % 2 != 0) {
-                    problems.push_back(where + " has an odd number of coordinates");
                 }
                 continue;
             }
@@ -637,37 +696,29 @@ struct EffectDesc {
                                    "', which is not a number");
                 continue;
             }
-            const int wanted = slot->width;
             const int left = param->dimension - binding.component;
             if (binding.component < 0 || left <= 0 || left < wanted ||
-                (wanted == 0 && left % 2 != 0)) {
+                (slot->list && left % dimensions != 0)) {
                 problems.push_back(where + " wants more components of '" +
                                    binding.param + "' than it has");
             }
         }
 
-        if (gizmo.space == GizmoSpace::Parent) {
-            // Up the chain of parents: each must be a Frame, and none may
-            // lead back here.
-            const GizmoDesc* at = &gizmo;
-            for (size_t steps = 0; at != nullptr && at->space == GizmoSpace::Parent;
-                 ++steps) {
-                const GizmoDesc* up = gizmoNamed(at->parent);
-                if (up == nullptr || up->kind != GizmoKind::Frame) {
-                    problems.push_back(who + " is placed in '" + at->parent +
-                                       "', which is not a Frame of this effect");
-                    break;
-                }
-                if (steps > effect.gizmos.size()) {
-                    problems.push_back(who + " is in a chain of frames that loops");
-                    break;
-                }
-                at = up;
-            }
-        } else if (!gizmo.parent.empty()) {
-            problems.push_back(who + " names a parent but is not in GizmoSpace::Parent");
+        const int constraint = static_cast<int>(gizmo.constraint);
+        if (dimensions == 2 && constraint > static_cast<int>(GizmoConstraint::Locked)) {
+            problems.push_back(who + " has a 3D constraint in a 2D space");
         }
-
+        if (!gizmo.camera.empty()) {
+            const GizmoDesc* camera = gizmoNamed(gizmo.camera);
+            if (dimensions != 3) {
+                problems.push_back(who + " names a camera but is not 3D");
+            } else if (camera == nullptr || camera->kind != GizmoKind::Camera) {
+                problems.push_back(who + " is projected through '" + gizmo.camera +
+                                   "', which is not a Camera of this effect");
+            } else if (camera == &gizmo) {
+                problems.push_back(who + " is projected through itself");
+            }
+        }
         if (gizmo.kind == GizmoKind::Label && gizmo.text.empty()) {
             problems.push_back(who + " is a Label with no text");
         }

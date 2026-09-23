@@ -171,7 +171,10 @@ namespace aofx {
 /// the host reads -- the argument of 6 -- and `aofx/Gizmo.h` beside it: any
 /// handle an effect wants, declared as primitives bound to its parameters and
 /// drawn by the host, plus a `Drawing` that reads strokes the effect attached
-/// in a layout version-stamped in its own first slot (the argument of 5).
+/// in a layout version-stamped in its own first slot (the argument of 5). The
+/// same vocabulary in 3D: a `World` space, `Sphere`, `Frame3D` and `Camera`
+/// kinds, and `gizmo::projectToPicture` so a 3D handle drawn over the picture
+/// and the render through the same camera agree to the pixel.
 /// `ShownWhen` moves from `Descriptor.h` to `Types.h`, which changes nothing
 /// about its shape. A bundle built against 25 is refused rather than read as
 /// having no gizmos, because its `EffectDesc` is a vector shorter.

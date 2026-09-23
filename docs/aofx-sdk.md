@@ -120,7 +120,7 @@ on a 0..1 slider that cannot reach a single degree.
 
 Roles cover a place, an angle and a scale. For anything else (a crop box, a
 corner pin, a radius you drag, a polygon, handles that turn with a transform, a
-guide, the path a tracker followed) declare it from the primitives in
+guide, the path a tracker followed, a light or a card in the scene) declare it from the primitives in
 `aofx/Gizmo.h` and bind each to your parameters:
 
 ```cpp
@@ -133,6 +133,12 @@ for (int i = 1; i <= 4; ++i) {
 }
 into.gizmos.push_back(pin);
 ```
+
+The same primitives work in 3D: in `World` space or inside a `Frame3D`, a place
+has three numbers, and a `Camera` gizmo (often read from a solve upstream with
+`bindInput`) projects them onto the picture with `gizmo::projectToPicture`, the
+same function your render should call. `Sphere`, `Frame3D` and `Camera` are
+3D-only; `Circle`, `Ellipse`, `Angle`, `Distance` and `Frame` are 2D-only.
 
 The host draws it and turns a drag into a parameter edit, with one undo step;
 the effect sees values as it always has. Something computed rather than set is

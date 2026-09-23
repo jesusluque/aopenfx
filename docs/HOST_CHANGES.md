@@ -41,15 +41,26 @@ Each entry says what to change and how to tell it worked.
 ## ABI 26 — gizmos
 
 `EffectDesc::gizmos` (`sdk/include/aofx/Descriptor.h`) and `aofx/Gizmo.h`: an
-effect declares any viewer handle as primitives bound to its parameters, and
-the host draws them. The contract is `docs/gizmos.md`. `kAbiVersion` is 26.
+effect declares any viewer handle, on the picture or in the 3D scene, as
+primitives bound to its parameters, and the host draws them. The contract is `docs/gizmos.md`. `kAbiVersion` is 26.
 
 - **Rebuild the host and every bundle.** `EffectDesc` grew a member; a bundle
   built against 25 is refused.
 - **`ShownWhen` moved** from `Descriptor.h` to `Types.h`. Same struct, same
   namespace; code that includes either header is unchanged.
-- **Draw the fifteen kinds** and offer the handles `docs/gizmos.md` lists for
-  each, in the four spaces, converting through the viewer's own mapping.
+- **Draw the eighteen kinds** and offer the handles `docs/gizmos.md` lists for
+  each, in the five spaces, converting through the viewer's own mapping.
+- **3D gizmos** (`World` space, or placed in a `Frame3D`): draw them in the 3D
+  view if the host has one, and over the picture through their `Camera` with
+  `aofx::gizmo::projectToPicture`, clipped at the camera's plane. Build frame
+  matrices with `gizmo::frame3DMatrix`/`frameMatrix`, never by hand. Drag them
+  as the constraint table says, using `gizmo::rayFromPicture` over the picture,
+  and leave the value alone when the ray misses its plane. A Frame3D ring
+  changes only its own component of `rotate`; a `matrix` slot is never
+  written.
+- **Attachments on an input**: a binding with `clip` reads the values arriving
+  at that input (`InputPlane::values`) of the frame on screen, not the node's
+  output.
 - **Turn a drag into parameter edits**: invert the frames and each binding's
   `scale`/`offset`, clamp to `hardMin`/`hardMax`, round Integers, one undo
   step per gesture named after the gizmo, nothing written for read-only
@@ -60,14 +71,18 @@ the host draws them. The contract is `docs/gizmos.md`. `kAbiVersion` is 26.
   parent frame's rules, as the document says; `repeat` over an `ItemCount`
   pool with `{i}` from one.
 - **Drawings**: read the attachment of the frame on screen with
-  `aofx::gizmo::decodeDrawing`; draw nothing when it refuses.
+  `aofx::gizmo::decodeDrawing`, passing the gizmo's dimensions
+  (`aofx::gizmoDimensions`); draw nothing when it refuses.
 - **Validate at load** with `aofx::checkGizmos`; skip what it names and report
   each once. An enumerator you do not know is skipped the same way, never
   drawn as something else and never a reason to refuse the bundle.
 
 Check: the Crop example shows one dashed box and no loose corner handles, and
 dragging a corner is one undo step that changes `corner1` or `corner2`; the
-CornerPin example shows a quad whose corners drag the four `corner` parameters.
+CornerPin example shows a quad whose corners drag the four `corner` parameters,
+and, with a tracker on its Track input, a dashed quad where the tracker puts
+them. For 3D: a point at the world position of a solved camera's look-at
+target lands on the same pixel over the picture and in the render.
 
 ## ABI 25 — the build tag carries the standard library's ABI
 

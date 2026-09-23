@@ -18,7 +18,7 @@ a host built against the same ABI.
 | `examples/` | Eight plugins that need only the SDK |
 | `tests/test_sdk_headers.cpp` | The headers, compiled and linked the way a plugin is |
 | `docs/aofx-sdk.md` | The SDK reference |
-| `docs/gizmos.md` | The gizmo standard: any viewer handle, declared by the effect and drawn by the host |
+| `docs/gizmos.md` | The gizmo standard: any viewer handle, 2D or 3D, declared by the effect and drawn by the host |
 | `docs/HOST_CHANGES.md` | What a host implementing the SDK must change, per version |
 | `docs/ROADMAP.md` | Designed or wanted, not scheduled |
 
@@ -32,7 +32,7 @@ The examples, and what each shows:
 | `grade` | colour parameters |
 | `merge` | two inputs, a Choice |
 | `transform` | Position and Angle parameters |
-| `cornerpin` | two entry points in one blob; corners from an attachment; two effects in one bundle; a Quad gizmo |
+| `cornerpin` | two entry points in one blob; corners from an attachment; two effects in one bundle; a Quad gizmo, and a read-only one from the Track input |
 | `generate` | generators with no input; two kernel files |
 
 ## Requirements

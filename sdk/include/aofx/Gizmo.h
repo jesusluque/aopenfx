@@ -20,6 +20,13 @@
 // picture is a composition of pixels. The effect says what; the host decides
 // how it looks, how it is hit, how it snaps, how it is undone.
 //
+// The same vocabulary works in three dimensions. A gizmo in `World` space, or
+// placed in a `Frame3D`, has points of three numbers instead of two; the host
+// draws it in its 3D view, and over the picture through the `Camera` gizmo it
+// names -- so a tracked camera's ground plane, a light's position or a card's
+// corners sit on the shot where they belong. A handle dragged over the
+// picture moves on the plane that faces that camera, or along an axis.
+//
 // And for what cannot be edited -- the path a tracker followed, the grid a
 // lens solve found, the outline of what a network segmented -- a `Drawing`
 // reads strokes the effect *computed*, attached to its output, and the host
@@ -45,6 +52,7 @@
 #include <utility>
 #include <vector>
 
+#include "aofx/Transform.h"
 #include "aofx/Types.h"
 
 namespace aofx {
@@ -54,61 +62,86 @@ namespace aofx {
 /// so) rather than drawing something else.
 ///
 /// Each kind is a list of *slots* -- the numbers it is made of -- listed by
-/// `gizmoSlots`. The comment on each kind names them; `(2)` is a point in the
-/// gizmo's space, `(1)` a single number.
+/// `gizmoSlots`. The comment on each kind names them; `(p)` is a point in the
+/// gizmo's space -- two numbers in a 2D space, three in a 3D one -- and `(1)`,
+/// `(3)`, `(12)` that many numbers whatever the space.
+///
+/// Most kinds work in both. Circle, Ellipse, Angle, Distance and Frame are
+/// flat by nature and only 2D; Sphere, Frame3D and Camera only 3D.
+/// `gizmoWorksIn` says which.
 enum class GizmoKind : int {
-    /// `at(2)`. A handle that drags freely, or along `constraint`.
+    /// `at(p)`. A handle that drags freely, or along `constraint`.
     Point = 0,
-    /// `from(2)`, `to(2)`. A segment with a handle at each end; dragging the
+    /// `from(p)`, `to(p)`. A segment with a handle at each end; dragging the
     /// middle moves both.
     Line,
-    /// `from(2)`, `to(2)`. A Line with a head at `to`: a direction, a light,
+    /// `from(p)`, `to(p)`. A Line with a head at `to`: a direction, a light,
     /// a motion vector somebody sets by hand.
     Arrow,
-    /// `corner1(2)`, `corner2(2)`, axis-aligned, in either order. Four corner
-    /// handles, four edge handles, and the inside to move it.
+    /// `corner1(p)`, `corner2(p)`, axis-aligned, in either order. Four corner
+    /// handles, four edge handles, and the inside to move it; in 3D a cuboid
+    /// with a handle on each face.
     Box,
-    /// `centre(2)`, `radius(1)`. A handle at the centre and one on the rim.
+    /// `centre(p)`, `radius(1)`. 2D. A handle at the centre and one on the rim.
     Circle,
-    /// `centre(2)`, `radii(2)`, `angle(1)` optional. A rim handle per axis,
+    /// `centre(p)`, `radii(2)`, `angle(1)` optional. 2D. A rim handle per axis,
     /// and a rotation handle when `angle` is bound.
     Ellipse,
-    /// `centre(2)`, `angle(1)` in degrees, `radius(1)` optional. A ring with
+    /// `centre(p)`, `angle(1)` in degrees, `radius(1)` optional. 2D. A ring with
     /// a handle on it; unbound, the ring is a fixed size on screen.
     Angle,
-    /// `corner1(2)` .. `corner4(2)`, anticlockwise from the bottom left. A
-    /// corner pin: four handles and the edges between them.
+    /// `corner1(p)` .. `corner4(p)`, anticlockwise from the bottom left. A
+    /// corner pin: four handles and the edges between them. In 3D, a card.
     Quad,
-    /// `points(2n)`, open. Each binding of `points` adds its pairs, in order.
+    /// `points(p·n)`, open. Each binding of `points` adds its pairs, in order.
     Polyline,
-    /// `points(2n)`, closed. As Polyline, with the last point joined to the
+    /// `points(p·n)`, closed. As Polyline, with the last point joined to the
     /// first and the inside to move all of them.
     Polygon,
-    /// `origin(2)`, `length(1)`, `angle(1)` optional. A single number dragged
+    /// `origin(p)`, `length(1)`, `angle(1)` optional. 2D. A single number dragged
     /// as a distance from a place: a blur's radius, a feather, a glow's
     /// reach. `angle` (degrees, anticlockwise from +x) says which way the
     /// handle points; unbound it points along +x. The origin is not dragged
     /// by this gizmo -- bind it to a Point as well if it should be.
     Distance,
     /// `translate(2)`, `angle(1)`, `scale(2)`, `centre(2)`; all but
-    /// `translate` optional. A coordinate frame: drawn as the transform
+    /// `translate` optional. 2D. A coordinate frame: drawn as the transform
     /// handle (a centre, a ring and scale handles), and the space every gizmo
     /// that names it as `parent` is placed in. The matrix is
     /// `T(translate) * T(centre) * R(angle) * S(scale) * T(-centre)`, which is
     /// `aofx/Transform.h`'s SRT with a pivot and no skew.
     Frame,
-    /// `at(2)`. Text at a place, from `GizmoDesc::text`. Never dragged.
+    /// `at(p)`. Text at a place, from `GizmoDesc::text`. Never dragged.
     Label,
-    /// `at(2)`. A cross at a place. Never dragged: for a place the effect
+    /// `at(p)`. A cross at a place. Never dragged: for a place the effect
     /// found rather than one somebody set.
     Crosshair,
     /// `strokes(n)`: an attachment in the layout `encodeDrawing` writes, and
     /// nothing else. Whatever the effect computed, drawn and never dragged.
     Drawing,
+    /// `centre(p)`, `radius(1)`. 3D. A handle at the centre and one on the
+    /// silhouette: a light's reach, a region of influence, a soft selection.
+    Sphere,
+    /// `translate(3)`, `rotate(3)`, `scale(3)`, `pivot(3)`, all optional, or
+    /// `matrix(12)` instead of all four. 3D. A coordinate frame: drawn as the
+    /// host's 3D transform handle (axes, rotation rings, scale handles), and
+    /// the space of every gizmo that names it as `parent`. The matrix is
+    /// `xform::localMatrix` with `GizmoDesc::rotationOrder` and SRT, which is
+    /// what an Axis means; `matrix` is its upper 3x4, row-major, for a frame
+    /// the effect already has as a matrix -- read-only, because twelve numbers
+    /// do not go back into three angles unambiguously.
+    Frame3D,
+    /// `translate(3)`, `rotate(3)` or `matrix(12)` as for Frame3D, `focal(1)`
+    /// in millimetres, `aperture(1)` (horizontal, millimetres; 24.576
+    /// unbound) and `offset(2)` (the window translate, in half-widths; 0
+    /// unbound). 3D. Drawn as a frustum in the 3D view, dragged as a Frame3D,
+    /// and what every 3D gizmo naming it in `GizmoDesc::camera` is projected
+    /// onto the picture through. `gizmo::projectToPicture` is the projection.
+    Camera,
 };
 
 /// The number of kinds, for a host checking an int it read from a bundle.
-inline constexpr int kGizmoKindCount = static_cast<int>(GizmoKind::Drawing) + 1;
+inline constexpr int kGizmoKindCount = static_cast<int>(GizmoKind::Camera) + 1;
 
 /// Where a gizmo's numbers are measured.
 enum class GizmoSpace : int {
@@ -122,13 +155,22 @@ enum class GizmoSpace : int {
     /// the picture rather than to the frame -- a crop of a still that is not
     /// the project's size.
     Input,
-    /// The frame of the `Frame` gizmo named by `GizmoDesc::parent`. A handle
-    /// that turns with a transform is one of these.
+    /// The frame of the `Frame` or `Frame3D` gizmo named by
+    /// `GizmoDesc::parent`, and as many dimensions as it has. A handle that
+    /// turns with a transform is one of these.
     Parent,
+    /// The 3D scene's units: right-handed, Y up, as `aofx/Transform.h` and
+    /// the host's 3D view. Points have three numbers.
+    World,
 };
 
 /// Which way a point handle may move. The host's own modifiers (a key held
 /// for "horizontal only") still apply on top.
+///
+/// `Free` in 3D means: in the host's 3D view, its own translate handle (an
+/// arrow per axis, a square per plane); over the picture, on the plane through
+/// the point that faces the camera, which is the only plane a 2D drag can
+/// name without guessing a depth.
 enum class GizmoConstraint : int {
     Free = 0,
     Horizontal,
@@ -136,6 +178,13 @@ enum class GizmoConstraint : int {
     /// Drawn and never dragged, although the numbers it shows are editable
     /// elsewhere -- the panel, a second gizmo.
     Locked,
+    /// 3D only, from here on. Along the space's Z axis. In 3D, `Horizontal`
+    /// and `Vertical` are its X and Y axes.
+    AlongZ,
+    /// On one of the space's planes: `OnXZ` is the ground.
+    OnXY,
+    OnXZ,
+    OnYZ,
 };
 
 /// When the viewer shows a gizmo.
@@ -169,7 +218,7 @@ struct GizmoStyle {
     enum class Handle : int { Square = 0, Round, Diamond, Cross, None };
     Handle handle = Handle::Square;
 
-    /// For a closed kind (Box, Circle, Ellipse, Quad, Polygon): tint the
+    /// For a closed kind (Box, Circle, Ellipse, Quad, Polygon, Sphere): tint the
     /// inside faintly. Off by default, because a gizmo over the picture is
     /// there to be seen past.
     bool fill = false;
@@ -196,6 +245,10 @@ struct GizmoBinding {
     /// width starting at `component`, as for a parameter. `{i}` works here
     /// too.
     std::string attachment;
+    /// Look the attachment up on what arrives at this input, by clip name,
+    /// instead of on this node's output: the corners a tracker upstream
+    /// found, the camera a solve upstream produced. Empty is the output.
+    std::string clip;
 
     /// The numbers themselves, when neither of the above is set. Also what a
     /// parameter or attachment slot shows when its source is absent -- an
@@ -236,6 +289,18 @@ struct GizmoBinding {
     return binding;
 }
 
+/// A slot filled from what arrives at input `clip`: numbers a node upstream
+/// attached, shown and never dragged.
+[[nodiscard]] inline GizmoBinding bindInput(std::string slot, std::string clip,
+                                            std::string id, int component = 0,
+                                            std::vector<double> fallback = {}) {
+    GizmoBinding binding = bindAttachment(std::move(slot), std::move(id),
+                                          std::move(fallback));
+    binding.clip = std::move(clip);
+    binding.component = component;
+    return binding;
+}
+
 /// A slot that is always the same numbers: a guide, a fixed pivot.
 [[nodiscard]] inline GizmoBinding bindConstant(std::string slot,
                                                std::vector<double> values) {
@@ -258,8 +323,16 @@ struct GizmoDesc {
     std::vector<GizmoBinding> bindings;
 
     GizmoSpace space = GizmoSpace::Canonical;
-    /// For `GizmoSpace::Parent`: the id of a `Frame` gizmo of this effect.
+    /// For `GizmoSpace::Parent`: the id of a `Frame` or `Frame3D` gizmo of
+    /// this effect. Its kind decides whether this gizmo is 2D or 3D.
     std::string parent;
+    /// For a 3D gizmo: the id of the `Camera` gizmo that projects it onto the
+    /// picture. Empty takes the nearest parent's; with none anywhere up the
+    /// chain it is drawn only in the host's 3D view.
+    std::string camera;
+    /// For a Frame3D or Camera: the order its `rotate` angles are applied in,
+    /// spelled as `aofx/Transform.h` spells it. Nuke's default.
+    xform::RotationOrder rotationOrder = xform::RotationOrder::ZXY;
     /// For `GizmoSpace::Input`: the clip, by name. Empty is the pass-through.
     std::string clip;
 
@@ -287,48 +360,128 @@ struct GizmoDesc {
 /// One slot of a kind.
 struct GizmoSlot {
     const char* name = "";
-    /// How many numbers one binding of it takes. Zero means "any number of
-    /// points": the slot may be bound more than once, and each binding adds
-    /// an even count -- a parameter's components from `component` on, an
-    /// attachment's whole array, or the constant.
+    /// How many numbers one binding of it takes, when `point` is false. Zero
+    /// means "the whole array": a Drawing's strokes.
     int  width = 0;
     bool optional = false;
+    /// A place in the gizmo's space: two numbers in 2D, three in 3D, and
+    /// `width` is ignored. With `list` it is any number of places: the slot
+    /// may be bound more than once, and each binding adds a whole number of
+    /// them -- a parameter's components from `component` on, an attachment's
+    /// array from `component` on, or the constant.
+    bool point = false;
+    bool list = false;
 };
+
+/// How many numbers one binding of `slot` takes in a space of `dimensions`,
+/// or zero for "a whole number of places" (a list) or "the whole array".
+[[nodiscard]] constexpr int gizmoSlotWidth(const GizmoSlot& slot, int dimensions) noexcept {
+    return slot.list ? 0 : slot.point ? dimensions : slot.width;
+}
 
 /// The slots of a kind, in the order the comments on `GizmoKind` list them.
 /// Empty for a number that is not a kind.
 [[nodiscard]] inline std::vector<GizmoSlot> gizmoSlots(GizmoKind kind) {
+    const auto at = [](const char* name, bool optional = false) {
+        return GizmoSlot{name, 0, optional, true, false};
+    };
+    const auto numbers = [](const char* name, int width, bool optional = false) {
+        return GizmoSlot{name, width, optional, false, false};
+    };
     switch (kind) {
         case GizmoKind::Point:
         case GizmoKind::Label:
         case GizmoKind::Crosshair:
-            return {{"at", 2, false}};
+            return {at("at")};
         case GizmoKind::Line:
         case GizmoKind::Arrow:
-            return {{"from", 2, false}, {"to", 2, false}};
+            return {at("from"), at("to")};
         case GizmoKind::Box:
-            return {{"corner1", 2, false}, {"corner2", 2, false}};
+            return {at("corner1"), at("corner2")};
         case GizmoKind::Circle:
-            return {{"centre", 2, false}, {"radius", 1, false}};
+        case GizmoKind::Sphere:
+            return {at("centre"), numbers("radius", 1)};
         case GizmoKind::Ellipse:
-            return {{"centre", 2, false}, {"radii", 2, false}, {"angle", 1, true}};
+            return {at("centre"), numbers("radii", 2), numbers("angle", 1, true)};
         case GizmoKind::Angle:
-            return {{"centre", 2, false}, {"angle", 1, false}, {"radius", 1, true}};
+            return {at("centre"), numbers("angle", 1), numbers("radius", 1, true)};
         case GizmoKind::Quad:
-            return {{"corner1", 2, false}, {"corner2", 2, false},
-                    {"corner3", 2, false}, {"corner4", 2, false}};
+            return {at("corner1"), at("corner2"), at("corner3"), at("corner4")};
         case GizmoKind::Polyline:
         case GizmoKind::Polygon:
-            return {{"points", 0, false}};
+            return {GizmoSlot{"points", 0, false, true, true}};
         case GizmoKind::Distance:
-            return {{"origin", 2, false}, {"length", 1, false}, {"angle", 1, true}};
+            return {at("origin"), numbers("length", 1), numbers("angle", 1, true)};
         case GizmoKind::Frame:
-            return {{"translate", 2, false}, {"angle", 1, true},
-                    {"scale", 2, true}, {"centre", 2, true}};
+            return {numbers("translate", 2), numbers("angle", 1, true),
+                    numbers("scale", 2, true), numbers("centre", 2, true)};
         case GizmoKind::Drawing:
-            return {{"strokes", 0, false}};
+            return {numbers("strokes", 0)};
+        case GizmoKind::Frame3D:
+            return {numbers("translate", 3, true), numbers("rotate", 3, true),
+                    numbers("scale", 3, true), numbers("pivot", 3, true),
+                    numbers("matrix", 12, true)};
+        case GizmoKind::Camera:
+            return {numbers("translate", 3, true), numbers("rotate", 3, true),
+                    numbers("matrix", 12, true), numbers("focal", 1),
+                    numbers("aperture", 1, true), numbers("offset", 2, true)};
     }
     return {};
+}
+
+/// Whether a kind can be drawn in a space of `dimensions` (2 or 3).
+[[nodiscard]] constexpr bool gizmoWorksIn(GizmoKind kind, int dimensions) noexcept {
+    switch (kind) {
+        case GizmoKind::Circle:
+        case GizmoKind::Ellipse:
+        case GizmoKind::Angle:
+        case GizmoKind::Distance:
+        case GizmoKind::Frame:
+            return dimensions == 2;
+        case GizmoKind::Sphere:
+        case GizmoKind::Frame3D:
+        case GizmoKind::Camera:
+            return dimensions == 3;
+        default:
+            return dimensions == 2 || dimensions == 3;
+    }
+}
+
+/// How many numbers a place has in `gizmo`'s space: 3 in `World` or in a
+/// Frame3D, 2 otherwise. Zero for a parent that is missing or is not a frame,
+/// or a chain of parents that loops.
+[[nodiscard]] inline int gizmoDimensions(const std::vector<GizmoDesc>& all,
+                                         const GizmoDesc& gizmo) {
+    if (gizmo.space == GizmoSpace::World) {
+        return 3;
+    }
+    if (gizmo.space != GizmoSpace::Parent) {
+        return 2;
+    }
+    // The first parent decides; the rest of the chain must still reach a
+    // frame that is not itself placed in another, or nothing is placed at all.
+    int dimensions = 0;
+    const GizmoDesc* at = &gizmo;
+    for (size_t steps = 0; steps <= all.size(); ++steps) {
+        const GizmoDesc* up = nullptr;
+        for (const GizmoDesc& candidate : all) {
+            if (candidate.id == at->parent) {
+                up = &candidate;
+            }
+        }
+        if (up == nullptr ||
+            (up->kind != GizmoKind::Frame && up->kind != GizmoKind::Frame3D)) {
+            return 0;
+        }
+        if (dimensions == 0) {
+            dimensions = up->kind == GizmoKind::Frame3D ? 3 : 2;
+        }
+        if (up->space != GizmoSpace::Parent) {
+            return dimensions;
+        }
+        at = up;
+    }
+    return 0;
 }
 
 /// Whether a kind can be dragged at all. The others only show.
@@ -336,6 +489,110 @@ struct GizmoSlot {
     return kind != GizmoKind::Label && kind != GizmoKind::Crosshair &&
            kind != GizmoKind::Drawing;
 }
+
+// --- 3D ---------------------------------------------------------------------
+//
+// The arithmetic a host and an effect must agree on, written once: how a
+// Frame3D's numbers become a matrix, and how a camera puts a point of the
+// scene on the picture. An effect that renders through the same camera calls
+// the same function, so a handle and the pixels under it cannot disagree.
+
+namespace gizmo {
+
+/// A Frame3D's local matrix from its slots: `xform::localMatrix` with SRT.
+[[nodiscard]] inline xform::Mat4 frame3DMatrix(const xform::Vec3& translate,
+                                               const xform::Vec3& rotate,
+                                               const xform::Vec3& scale,
+                                               const xform::Vec3& pivot,
+                                               xform::RotationOrder order) {
+    xform::Transform t;
+    t.translate = translate;
+    t.rotate = rotate;
+    t.scale = scale;
+    t.pivot = pivot;
+    t.rotationOrder = order;
+    t.transformOrder = xform::TransformOrder::SRT;
+    return xform::localMatrix(t);
+}
+
+/// A matrix from a `matrix(12)` slot: the upper 3x4, row-major.
+[[nodiscard]] inline xform::Mat4 matrixFromRows(const double* rows) {
+    xform::Mat4 out;
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            out.at(r, c) = rows[r * 4 + c];
+        }
+    }
+    return out;
+}
+
+/// A 2D Frame's matrix, in the plane z = 0:
+/// `T(translate) * T(centre) * R(angle) * S(scale) * T(-centre)`.
+[[nodiscard]] inline xform::Mat4 frameMatrix(double tx, double ty, double angle,
+                                             double sx, double sy, double cx,
+                                             double cy) {
+    return frame3DMatrix({tx, ty, 0.0}, {0.0, 0.0, angle}, {sx, sy, 1.0},
+                         {cx, cy, 0.0}, xform::RotationOrder::ZXY);
+}
+
+/// Unbound, a camera's horizontal aperture: Nuke's default, in millimetres.
+inline constexpr double kDefaultAperture = 24.576;
+
+/// What a Camera gizmo's slots amount to.
+struct CameraView {
+    /// Camera to world. The camera looks down its own -Z, Y up.
+    xform::Mat4 cameraToWorld;
+    double focal = 50.0;                   ///< millimetres
+    double aperture = kDefaultAperture;    ///< horizontal, millimetres
+    /// The window translate, in half-widths of the picture on both axes.
+    double offsetX = 0.0;
+    double offsetY = 0.0;
+};
+
+/// Where `world` lands on the picture, in canonical pixels of a project
+/// `width` by `height` with `pixelAspect`. False when the point is behind the
+/// camera, or on its plane, and there is nowhere to put it.
+///
+/// The horizontal aperture spans the width; the vertical follows from the
+/// format, as Nuke's camera does, so the aperture's own height never enters:
+///
+///     x = w/2 * (1 + 2f·px / (-pz·A) + offsetX)
+///     y = h/2 + w·pixelAspect/2 * (2f·py / (-pz·A) + offsetY)
+///
+/// with (px, py, pz) the point in the camera's own frame.
+[[nodiscard]] inline bool projectToPicture(const CameraView& camera,
+                                           const xform::Vec3& world, double width,
+                                           double height, double pixelAspect,
+                                           double& x, double& y) {
+    const xform::Vec3 p = xform::viewFromCameraWorld(camera.cameraToWorld).point(world);
+    if (!(p.z < -1e-9) || !(camera.aperture > 0.0) || !(camera.focal > 0.0)) {
+        return false;
+    }
+    const double u = 2.0 * camera.focal * p.x / (-p.z * camera.aperture) + camera.offsetX;
+    const double v = 2.0 * camera.focal * p.y / (-p.z * camera.aperture) + camera.offsetY;
+    x = width * 0.5 * (1.0 + u);
+    y = height * 0.5 + width * pixelAspect * 0.5 * v;
+    return std::isfinite(x) && std::isfinite(y);
+}
+
+/// The ray under a picture position: where a drag over the picture points
+/// into the scene. `origin` is the camera's position, `direction` is not
+/// normalised. The inverse of `projectToPicture` for every depth.
+inline void rayFromPicture(const CameraView& camera, double x, double y, double width,
+                           double height, double pixelAspect, xform::Vec3& origin,
+                           xform::Vec3& direction) {
+    const double u = (width > 0.0 ? 2.0 * x / width - 1.0 : 0.0) - camera.offsetX;
+    const double v = (width * pixelAspect > 0.0
+                          ? 2.0 * (y - height * 0.5) / (width * pixelAspect)
+                          : 0.0) -
+                     camera.offsetY;
+    const xform::Vec3 local{u * camera.aperture / (2.0 * camera.focal),
+                            v * camera.aperture / (2.0 * camera.focal), -1.0};
+    origin = camera.cameraToWorld.translation();
+    direction = camera.cameraToWorld.direction(local);
+}
+
+}   // namespace gizmo
 
 // --- computed drawings --------------------------------------------------------
 //
@@ -347,6 +604,10 @@ struct GizmoSlot {
 // [ version, strokeCount,
 //   flags, r, g, b, a, pointCount, x, y, x, y, ...   one per stroke
 //   ... ]
+//
+// A point is as many numbers as the gizmo's space has: x, y in 2D and
+// x, y, z in 3D. The array does not say which; the gizmo does, and the writer
+// and the reader pass the same `dimensions`.
 //
 // `flags` is a sum of the `kStroke*` bits. Floats, because that is what an
 // attachment carries; a stroke is for looking at, and float is more than a
@@ -377,7 +638,7 @@ struct Stroke {
     float green = 1.0F;
     float blue = 1.0F;
     float alpha = 1.0F;
-    /// x, y pairs, in the gizmo's space.
+    /// x, y pairs in 2D, x, y, z triples in 3D, in the gizmo's space.
     std::vector<float> points;
 };
 
@@ -388,7 +649,8 @@ inline constexpr size_t kMaxStrokePoints = 65536;
 
 /// Packs strokes into the array an attachment carries.
 [[nodiscard]] inline std::vector<float> encodeDrawing(
-    const std::vector<Stroke>& strokes) {
+    const std::vector<Stroke>& strokes, int dimensions = 2) {
+    const size_t stride = dimensions == 3 ? 3 : 2;
     std::vector<float> out;
     out.push_back(kDrawingVersion);
     out.push_back(static_cast<float>(strokes.size()));
@@ -398,10 +660,10 @@ inline constexpr size_t kMaxStrokePoints = 65536;
         out.push_back(stroke.green);
         out.push_back(stroke.blue);
         out.push_back(stroke.alpha);
-        out.push_back(static_cast<float>(stroke.points.size() / 2));
+        out.push_back(static_cast<float>(stroke.points.size() / stride));
         out.insert(out.end(), stroke.points.begin(),
                    stroke.points.begin() +
-                       static_cast<std::ptrdiff_t>(stroke.points.size() / 2 * 2));
+                       static_cast<std::ptrdiff_t>(stroke.points.size() / stride * stride));
     }
     return out;
 }
@@ -411,8 +673,10 @@ inline constexpr size_t kMaxStrokePoints = 65536;
 /// past the end, a number that is not finite. A host shows nothing rather
 /// than half a drawing.
 [[nodiscard]] inline bool decodeDrawing(const std::vector<float>& data,
-                                        std::vector<Stroke>& into) {
+                                        std::vector<Stroke>& into,
+                                        int dimensions = 2) {
     into.clear();
+    const size_t stride = dimensions == 3 ? 3 : 2;
     const auto fail = [&into] {
         into.clear();
         return false;
@@ -450,17 +714,17 @@ inline constexpr size_t kMaxStrokePoints = 65536;
         stroke.blue = data[at + 3];
         stroke.alpha = data[at + 4];
         at += kStrokeHeaderStride;
-        if (data.size() - at < points * 2) {
+        if (data.size() - at < points * stride) {
             return fail();
         }
         stroke.points.assign(data.begin() + static_cast<std::ptrdiff_t>(at),
-                             data.begin() + static_cast<std::ptrdiff_t>(at + points * 2));
+                             data.begin() + static_cast<std::ptrdiff_t>(at + points * stride));
         for (float value : stroke.points) {
             if (!std::isfinite(value)) {
                 return fail();
             }
         }
-        at += points * 2;
+        at += points * stride;
         into.push_back(std::move(stroke));
     }
     if (at != data.size()) {
