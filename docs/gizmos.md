@@ -5,7 +5,7 @@ the 3D scene, without drawing one. The declarations are in
 `sdk/include/aofx/Gizmo.h`; this document is the contract a plugin and a host
 each keep. **MUST**, **SHOULD** and **MAY** are used in their RFC 2119 sense.
 
-Since **ABI 26**.
+Since **ABI 26**; 3D gizmos and attachments read on an input since **ABI 27**.
 
 ## The rule this keeps
 

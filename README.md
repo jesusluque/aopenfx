@@ -4,7 +4,7 @@ The **AOFX** effect SDK: a plugin interface for effects that run on the GPU
 through Metal or CUDA, and a build that makes a plugin bundle with nothing but
 the SDK.
 
-This is **AOFX ABI 26** (`sdk/include/aofx/Version.h`). A bundle loads only in
+This is **AOFX ABI 27** (`sdk/include/aofx/Version.h`). A bundle loads only in
 a host built against the same ABI.
 
 ## What is here

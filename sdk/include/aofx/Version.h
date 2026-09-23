@@ -171,14 +171,20 @@ namespace aofx {
 /// the host reads -- the argument of 6 -- and `aofx/Gizmo.h` beside it: any
 /// handle an effect wants, declared as primitives bound to its parameters and
 /// drawn by the host, plus a `Drawing` that reads strokes the effect attached
-/// in a layout version-stamped in its own first slot (the argument of 5). The
-/// same vocabulary in 3D: a `World` space, `Sphere`, `Frame3D` and `Camera`
-/// kinds, and `gizmo::projectToPicture` so a 3D handle drawn over the picture
-/// and the render through the same camera agree to the pixel.
+/// in a layout version-stamped in its own first slot (the argument of 5).
 /// `ShownWhen` moves from `Descriptor.h` to `Types.h`, which changes nothing
 /// about its shape. A bundle built against 25 is refused rather than read as
 /// having no gizmos, because its `EffectDesc` is a vector shorter.
-inline constexpr int kAbiVersion = 26;
+/// 27: gizmos in 3D. The same vocabulary in the scene: a `World` space,
+/// `Sphere`, `Frame3D` and `Camera` kinds, 3D constraints, and
+/// `gizmo::projectToPicture` so a handle drawn over the picture and the
+/// render through the same camera agree to the pixel. `GizmoDesc::camera`
+/// and `::rotationOrder` and `GizmoBinding::clip` (an attachment read on an
+/// input) are members of structs the plugin fills -- the argument of 6 --
+/// and the new enumerators change what a host does with a bundle -- the
+/// argument of 13. The drawing layout takes triples in a 3D space; its
+/// version stays 1, because a 2D drawing is read exactly as before.
+inline constexpr int kAbiVersion = 27;
 
 /// What this translation unit was compiled with.
 ///
