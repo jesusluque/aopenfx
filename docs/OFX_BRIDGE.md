@@ -163,6 +163,63 @@ instance kept.
 The R/G/B/A switches every AOFX node gets are the bridge's to implement:
 four parameters, and one kernel that puts back the unselected channels.
 
+## Gizmos: the bridge draws them, the effect never does
+
+An AOFX effect cannot draw, and the bridge keeps it that way. The effect says
+what its numbers *are* (`ParamRole`, `ParamType::Shape`); in an AOFX host the
+host draws the handle, and here the bridge is the host. So every node that
+has something to draw gets an OpenFX overlay interact
+(`kOfxImageEffectPluginPropOverlayInteractV1`) written once, in the bridge,
+and driven by the node's `EffectDesc`. The `.aofx` bundle contains no
+drawing code and learns nothing new.
+
+**How it draws.** With the Draw Suite (`ofxDrawSuite.h`, OpenFX 1.5) where
+the host has it: lines, polygons, points and text, asked of the host, with
+no OpenGL linked into the bridge. Where it does not, with OpenGL on the
+context the host makes current for the draw action. Coordinates are
+canonical; `kOfxInteractPropPixelScale` sizes handles in screen pixels so a
+handle is the same size at any zoom.
+
+**How it edits.** Pen down, motion and up (`kOfxInteractActionPenDown`,
+`PenMotion`, `PenUp`) set the parameter the handle stands for, between
+`paramEditBegin` and `paramEditEnd` (`OfxParameterSuiteV1`), so one drag is one undo step and an
+animated parameter gets a key where the host would put one.
+
+| The effect declares | The bridge draws | And a drag sets |
+|---|---|---|
+| `ParamRole::Position` (Double, 2) | A point | Both numbers, in pixels |
+| `ParamRole::Angle` | A ring about the node's Position, or the frame's centre when it has none | Degrees |
+| `ParamRole::Scale` | A radial handle on the same ring | The multiplier |
+| `ParamType::Shape` | The outlines, their points, tangents and feather, as `aofx/Shape.h` lays them out | The numbers in that layout |
+| `ItemCount` / `ItemIndex` | Only the handles of the item being edited | -- |
+| Boxes in the input's aofxData | Rectangles with their `id`, to look at, not to edit | -- |
+
+Three declarations the bridge honours exactly as an AOFX host does:
+
+- **`ShownWhen` hides the handle with the row.** Eight points on the picture,
+  six of which the node is ignoring, is worse than no handles.
+- **`defaultsNormalised`** is `kOfxParamPropDefaultCoordinateSystem` set to
+  normalised, so a default of `{0.5, 0.5}` is the centre at any format and
+  the ring is drawn where the render turns.
+- **`Angle` without a range** gets a display range in degrees, so its
+  slider can reach one.
+
+**Shapes are the expensive one.** A point is one parameter; a shape is a
+list of them with tangents and feather, and its editor -- add a point,
+break a tangent, drag a feather -- is most of a roto tool. It comes after
+the point, ring and boxes, and until then a Shape parameter is edited as
+its numbers.
+
+**Boxes are drawn from the CPU.** The overlay does not read the device while
+it draws. A producer already reads its boxes back once a frame
+(`attachedBoxes`, 512 bytes, see `aofx/Boxes.h`); the bridge keeps that copy
+in the registry under the instance and the frame, and the overlay draws from
+there.
+
+Where a host draws its own handle for an `XYAbsolute` parameter, a node would
+get two. The bridge declares its positions as plain doubles in that host and
+draws them itself, so every AOFX node has the same gizmo in every host.
+
 ## What DeliveryOFX gives back
 
 | In the channel | Out as OpenFX |
