@@ -116,6 +116,31 @@ already knew how to draw.
 `Angle` is worth more than the handle: a rotation with no declared range lands
 on a 0..1 slider that cannot reach a single degree.
 
+### Any other gizmo: `EffectDesc::gizmos`
+
+Roles cover a place, an angle and a scale. For anything else (a crop box, a
+corner pin, a radius you drag, a polygon, handles that turn with a transform, a
+guide, the path a tracker followed) declare it from the primitives in
+`aofx/Gizmo.h` and bind each to your parameters:
+
+```cpp
+aofx::GizmoDesc pin;
+pin.id = "pin";
+pin.kind = aofx::GizmoKind::Quad;
+for (int i = 1; i <= 4; ++i) {
+    const std::string name = "corner" + std::to_string(i);
+    pin.bindings.push_back(aofx::bindParam(name, name));
+}
+into.gizmos.push_back(pin);
+```
+
+The host draws it and turns a drag into a parameter edit, with one undo step;
+the effect sees values as it always has. Something computed rather than set is
+a `Drawing`: strokes you `attach` in `process`, drawn and never dragged. Call
+`aofx::checkGizmos` from a test, because a gizmo bound to a renamed parameter
+fails silently. The full contract, for plugins and hosts, is
+[gizmos.md](gizmos.md).
+
 ### Choice indices are permanent
 
 A script records the *index*. Appending to a choice list is safe; reordering it

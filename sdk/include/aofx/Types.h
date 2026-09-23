@@ -236,6 +236,27 @@ struct ParamValue {
     }
 };
 
+/// Only shown while another parameter has a particular value.
+///
+/// Here rather than in `Descriptor.h` because a gizmo (`aofx/Gizmo.h`) obeys
+/// the same rule as the row it edits, and both headers need it.
+///
+/// Declarative, and read by the host: AOFX has no `paramChanged` action and
+/// this does not invent one. An effect says what a control is *for* and the
+/// host decides when it is worth a row -- which is the same division as
+/// `ParamRole`, where the effect says "this pair is a place" and never touches
+/// the toolkit.
+///
+/// It hides the handle as well as the row. Eight draggable points on a picture,
+/// six of which the node is currently ignoring, is not a panel problem.
+struct ShownWhen {
+    /// The controlling parameter, by name. Empty means always shown.
+    std::string param;
+    /// The value it must have. For a Choice this is the option's `value`
+    /// string; for anything else, the number written out.
+    std::string is;
+};
+
 /// How a dispatch is shaped: one thread per output pixel, normally.
 struct Grid {
     uint32_t x = 1;

@@ -4,7 +4,7 @@ The **AOFX** effect SDK: a plugin interface for effects that run on the GPU
 through Metal or CUDA, and a build that makes a plugin bundle with nothing but
 the SDK.
 
-This is **AOFX ABI 25** (`sdk/include/aofx/Version.h`). A bundle loads only in
+This is **AOFX ABI 26** (`sdk/include/aofx/Version.h`). A bundle loads only in
 a host built against the same ABI.
 
 ## What is here
@@ -18,6 +18,7 @@ a host built against the same ABI.
 | `examples/` | Eight plugins that need only the SDK |
 | `tests/test_sdk_headers.cpp` | The headers, compiled and linked the way a plugin is |
 | `docs/aofx-sdk.md` | The SDK reference |
+| `docs/gizmos.md` | The gizmo standard: any viewer handle, declared by the effect and drawn by the host |
 | `docs/HOST_CHANGES.md` | What a host implementing the SDK must change, per version |
 | `docs/ROADMAP.md` | Designed or wanted, not scheduled |
 
@@ -26,12 +27,12 @@ The examples, and what each shows:
 | Example | Shows |
 |---|---|
 | `invert` | the smallest plugin |
-| `crop` | region of definition and region of interest |
+| `crop` | region of definition and region of interest; a Box gizmo |
 | `blur` | separable passes, radius at render scale |
 | `grade` | colour parameters |
 | `merge` | two inputs, a Choice |
 | `transform` | Position and Angle parameters |
-| `cornerpin` | two entry points in one blob; corners from an attachment; two effects in one bundle |
+| `cornerpin` | two entry points in one blob; corners from an attachment; two effects in one bundle; a Quad gizmo |
 | `generate` | generators with no input; two kernel files |
 
 ## Requirements
@@ -59,7 +60,7 @@ built or run there yet.
 
 **CI** (GitHub Actions, Linux) builds every header on its own and runs the CPU
 tests: the header test, the build-tag test (including libstdc++'s old and new
-string ABI) and the blur regions test. It has no GPU toolchain, so the examples'
+string ABI), the blur regions test and the gizmo test. It has no GPU toolchain, so the examples'
 kernels are not built there.
 
 ## Build

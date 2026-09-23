@@ -38,6 +38,37 @@ boundaries in the blurred picture are where they are in the unblurred one.
 What changed in the SDK that a host implementing it must follow. Newest first.
 Each entry says what to change and how to tell it worked.
 
+## ABI 26 — gizmos
+
+`EffectDesc::gizmos` (`sdk/include/aofx/Descriptor.h`) and `aofx/Gizmo.h`: an
+effect declares any viewer handle as primitives bound to its parameters, and
+the host draws them. The contract is `docs/gizmos.md`. `kAbiVersion` is 26.
+
+- **Rebuild the host and every bundle.** `EffectDesc` grew a member; a bundle
+  built against 25 is refused.
+- **`ShownWhen` moved** from `Descriptor.h` to `Types.h`. Same struct, same
+  namespace; code that includes either header is unchanged.
+- **Draw the fifteen kinds** and offer the handles `docs/gizmos.md` lists for
+  each, in the four spaces, converting through the viewer's own mapping.
+- **Turn a drag into parameter edits**: invert the frames and each binding's
+  `scale`/`offset`, clamp to `hardMin`/`hardMax`, round Integers, one undo
+  step per gesture named after the gizmo, nothing written for read-only
+  bindings, attachments, constants or locked parameters.
+- **Suppress role handles** for parameters bound by a gizmo you draw, and only
+  those: a skipped gizmo suppresses nothing.
+- **Visibility**: `visibility`, `shownWhen`/`shownAlso`, hidden rows, and the
+  parent frame's rules, as the document says; `repeat` over an `ItemCount`
+  pool with `{i}` from one.
+- **Drawings**: read the attachment of the frame on screen with
+  `aofx::gizmo::decodeDrawing`; draw nothing when it refuses.
+- **Validate at load** with `aofx::checkGizmos`; skip what it names and report
+  each once. An enumerator you do not know is skipped the same way, never
+  drawn as something else and never a reason to refuse the bundle.
+
+Check: the Crop example shows one dashed box and no loose corner handles, and
+dragging a corner is one undo step that changes `corner1` or `corner2`; the
+CornerPin example shows a quad whose corners drag the four `corner` parameters.
+
 ## ABI 25 — the build tag carries the standard library's ABI
 
 `aofx::buildTag()` (`sdk/include/aofx/Version.h`) now includes the standard

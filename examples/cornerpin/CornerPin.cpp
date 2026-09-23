@@ -267,6 +267,21 @@ public:
             into.params.push_back(corner);
         }
 
+        // The four corners as one quad: handles on the corners and the edges
+        // between them, which is what a corner pin is to somebody looking at
+        // it. Without this the corners had no handle at all -- they carry no
+        // `Position` role, and four unrelated points would not have been a
+        // pin anyway.
+        aofx::GizmoDesc pin;
+        pin.id = "pin";
+        pin.label = "Corner pin";
+        pin.kind = aofx::GizmoKind::Quad;
+        for (int index = 0; index < 4; ++index) {
+            const std::string name = "corner" + std::to_string(index + 1);
+            pin.bindings.push_back(aofx::bindParam(name, name));
+        }
+        into.gizmos.push_back(pin);
+
         aofx::ParamDesc crown;
         crown.name = "crown";
         crown.label = "Crown";

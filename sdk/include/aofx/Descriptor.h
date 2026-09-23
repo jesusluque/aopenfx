@@ -9,9 +9,11 @@
 // only place the two vocabularies meet, and it is the host's job.
 #pragma once
 
+#include <cmath>
 #include <string>
 #include <vector>
 
+#include "aofx/Gizmo.h"
 #include "aofx/Types.h"
 
 namespace aofx {
@@ -98,24 +100,6 @@ enum class ParamType {
 /// drawing code. AOFX effects had no way to say it, so they got no handles
 /// except where the host recognised the parameter's *name* -- which covers
 /// Transform and nothing anybody writes next.
-/// Only shown while another parameter has a particular value.
-///
-/// Declarative, and read by the host: AOFX has no `paramChanged` action and
-/// this does not invent one. An effect says what a control is *for* and the
-/// host decides when it is worth a row -- which is the same division as
-/// `ParamRole`, where the effect says "this pair is a place" and never touches
-/// the toolkit.
-///
-/// It hides the handle as well as the row. Eight draggable points on a picture,
-/// six of which the node is currently ignoring, is not a panel problem.
-struct ShownWhen {
-    /// The controlling parameter, by name. Empty means always shown.
-    std::string param;
-    /// The value it must have. For a Choice this is the option's `value`
-    /// string; for anything else, the number written out.
-    std::string is;
-};
-
 enum class ParamRole {
     None,
     /// Two numbers that are a place in the picture, in pixels. Gets a handle.
@@ -513,6 +497,195 @@ struct EffectDesc {
     /// Empty `param` means never. A parameter the node does not set counts as
     /// its declared default.
     ShownWhen flowsWhen;
+
+    /// The handles this effect wants in the viewer, beyond what `ParamRole`
+    /// gives. See `aofx/Gizmo.h` and `docs/gizmos.md`.
+    ///
+    /// Any gizmo is a composition of the primitives there, bound to this
+    /// effect's parameters; the host draws them and writes a drag back as a
+    /// parameter edit. A parameter bound to a gizmo the host draws gets no
+    /// handle from its role, so declaring one never draws a handle twice; a
+    /// gizmo the host skips suppresses nothing. Left empty, an effect gets
+    /// exactly what its roles gave it before this existed.
+    ///
+    /// `checkGizmos` says what is wrong with a list before a host has to.
+    std::vector<GizmoDesc> gizmos;
 };
+
+/// What is wrong with an effect's gizmos, one sentence each. Empty means a
+/// host can draw every one of them.
+///
+/// Worth calling from a test: a gizmo bound to a parameter that was renamed
+/// is not an error anywhere else -- it is a handle that silently stops
+/// appearing, and nobody notices a handle that is not there. A host calls it
+/// too, and skips the gizmos it names rather than refusing the bundle.
+[[nodiscard]] inline std::vector<std::string> checkGizmos(const EffectDesc& effect) {
+    std::vector<std::string> problems;
+    const auto paramNamed = [&effect](const std::string& name) -> const ParamDesc* {
+        for (const ParamDesc& param : effect.params) {
+            if (param.name == name) {
+                return &param;
+            }
+        }
+        return nullptr;
+    };
+    const auto gizmoNamed = [&effect](const std::string& id) -> const GizmoDesc* {
+        for (const GizmoDesc& gizmo : effect.gizmos) {
+            if (gizmo.id == id) {
+                return &gizmo;
+            }
+        }
+        return nullptr;
+    };
+    // What `{i}` becomes for the purpose of checking: the first item, which
+    // every pool has.
+    const auto firstItem = [](std::string name) {
+        for (size_t at = name.find("{i}"); at != std::string::npos;
+             at = name.find("{i}", at)) {
+            name.replace(at, 3, "1");
+        }
+        return name;
+    };
+
+    for (size_t index = 0; index < effect.gizmos.size(); ++index) {
+        const GizmoDesc& gizmo = effect.gizmos[index];
+        const std::string who =
+            "gizmo '" + (gizmo.id.empty() ? "#" + std::to_string(index) : gizmo.id) + "'";
+        if (gizmo.id.empty()) {
+            problems.push_back(who + " has no id");
+        }
+        for (size_t other = 0; other < index; ++other) {
+            if (!gizmo.id.empty() && effect.gizmos[other].id == gizmo.id) {
+                problems.push_back(who + " has the same id as an earlier one");
+                break;
+            }
+        }
+        const int kind = static_cast<int>(gizmo.kind);
+        if (kind < 0 || kind >= kGizmoKindCount) {
+            problems.push_back(who + " is of a kind this SDK does not know");
+            continue;
+        }
+
+        const std::vector<GizmoSlot> slots = gizmoSlots(gizmo.kind);
+        for (const GizmoSlot& slot : slots) {
+            int bound = 0;
+            for (const GizmoBinding& binding : gizmo.bindings) {
+                bound += binding.slot == slot.name ? 1 : 0;
+            }
+            if (bound == 0 && !slot.optional) {
+                problems.push_back(who + " leaves slot '" + slot.name + "' unbound");
+            }
+            if (bound > 1 && slot.width != 0) {
+                problems.push_back(who + " binds slot '" + slot.name + "' more than once");
+            }
+        }
+
+        const bool repeated = !gizmo.repeat.empty();
+        for (const GizmoBinding& binding : gizmo.bindings) {
+            const GizmoSlot* slot = nullptr;
+            for (const GizmoSlot& candidate : slots) {
+                if (binding.slot == candidate.name) {
+                    slot = &candidate;
+                }
+            }
+            const std::string where = who + " slot '" + binding.slot + "'";
+            if (slot == nullptr) {
+                problems.push_back(where + " is not a slot of its kind");
+                continue;
+            }
+            const int sources = (binding.param.empty() ? 0 : 1) +
+                                (binding.attachment.empty() ? 0 : 1);
+            if (sources > 1) {
+                problems.push_back(where + " names both a parameter and an attachment");
+                continue;
+            }
+            if (sources == 0 && binding.constant.empty()) {
+                problems.push_back(where + " has no source: no parameter, attachment or constant");
+                continue;
+            }
+            if (gizmo.kind == GizmoKind::Drawing && binding.attachment.empty()) {
+                problems.push_back(where + " must be an attachment: a drawing is computed");
+                continue;
+            }
+            if (!std::isfinite(binding.scale) || binding.scale == 0.0 ||
+                !std::isfinite(binding.offset)) {
+                problems.push_back(where + " has a scale that cannot be undone");
+            }
+            if (!repeated && (binding.param.find("{i}") != std::string::npos ||
+                              binding.attachment.find("{i}") != std::string::npos)) {
+                problems.push_back(where + " uses {i} on a gizmo that does not repeat");
+            }
+            if (binding.param.empty()) {
+                if (binding.attachment.empty() && slot->width != 0 &&
+                    binding.constant.size() != static_cast<size_t>(slot->width)) {
+                    problems.push_back(where + " has a constant of the wrong size");
+                }
+                if (binding.attachment.empty() && slot->width == 0 &&
+                    binding.constant.size() % 2 != 0) {
+                    problems.push_back(where + " has an odd number of coordinates");
+                }
+                continue;
+            }
+            const ParamDesc* param = paramNamed(firstItem(binding.param));
+            if (param == nullptr) {
+                problems.push_back(where + " names parameter '" + binding.param +
+                                   "', which this effect does not have");
+                continue;
+            }
+            if (param->type != ParamType::Double && param->type != ParamType::Integer) {
+                problems.push_back(where + " names parameter '" + binding.param +
+                                   "', which is not a number");
+                continue;
+            }
+            const int wanted = slot->width;
+            const int left = param->dimension - binding.component;
+            if (binding.component < 0 || left <= 0 || left < wanted ||
+                (wanted == 0 && left % 2 != 0)) {
+                problems.push_back(where + " wants more components of '" +
+                                   binding.param + "' than it has");
+            }
+        }
+
+        if (gizmo.space == GizmoSpace::Parent) {
+            // Up the chain of parents: each must be a Frame, and none may
+            // lead back here.
+            const GizmoDesc* at = &gizmo;
+            for (size_t steps = 0; at != nullptr && at->space == GizmoSpace::Parent;
+                 ++steps) {
+                const GizmoDesc* up = gizmoNamed(at->parent);
+                if (up == nullptr || up->kind != GizmoKind::Frame) {
+                    problems.push_back(who + " is placed in '" + at->parent +
+                                       "', which is not a Frame of this effect");
+                    break;
+                }
+                if (steps > effect.gizmos.size()) {
+                    problems.push_back(who + " is in a chain of frames that loops");
+                    break;
+                }
+                at = up;
+            }
+        } else if (!gizmo.parent.empty()) {
+            problems.push_back(who + " names a parent but is not in GizmoSpace::Parent");
+        }
+
+        if (gizmo.kind == GizmoKind::Label && gizmo.text.empty()) {
+            problems.push_back(who + " is a Label with no text");
+        }
+        if (repeated) {
+            const ParamDesc* count = paramNamed(gizmo.repeat);
+            if (count == nullptr || count->role != ParamRole::ItemCount) {
+                problems.push_back(who + " repeats over '" + gizmo.repeat +
+                                   "', which is not an ItemCount parameter");
+            }
+        }
+        for (const ShownWhen* rule : {&gizmo.shownWhen, &gizmo.shownAlso}) {
+            if (!rule->param.empty() && paramNamed(rule->param) == nullptr) {
+                problems.push_back(who + " is shown by '" + rule->param +
+                                   "', which this effect does not have");
+            }
+        }
+    }
+    return problems;
+}
 
 }   // namespace aofx

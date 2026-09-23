@@ -167,7 +167,15 @@ namespace aofx {
 /// moves; what changes is the *contents* of the tag, and the host compares
 /// tags, so a host and a bundle built against 24 and 25 no longer match and
 /// both are rebuilt.
-inline constexpr int kAbiVersion = 25;
+/// 26: gizmos. `EffectDesc::gizmos`, appended to a struct the plugin fills and
+/// the host reads -- the argument of 6 -- and `aofx/Gizmo.h` beside it: any
+/// handle an effect wants, declared as primitives bound to its parameters and
+/// drawn by the host, plus a `Drawing` that reads strokes the effect attached
+/// in a layout version-stamped in its own first slot (the argument of 5).
+/// `ShownWhen` moves from `Descriptor.h` to `Types.h`, which changes nothing
+/// about its shape. A bundle built against 25 is refused rather than read as
+/// having no gizmos, because its `EffectDesc` is a vector shorter.
+inline constexpr int kAbiVersion = 26;
 
 /// What this translation unit was compiled with.
 ///

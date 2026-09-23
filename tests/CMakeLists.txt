@@ -50,3 +50,9 @@ target_link_libraries(aofx_blur_regions_tests PRIVATE aofx::aofx)
 target_include_directories(aofx_blur_regions_tests PRIVATE
     ${PROJECT_SOURCE_DIR}/examples/blur)
 add_test(NAME aofx_blur_regions_tests COMMAND aofx_blur_regions_tests)
+
+# The gizmo standard: what `checkGizmos` accepts and names, and the drawing
+# layout's round trip. Headers only.
+add_executable(aofx_gizmo_tests test_gizmos.cpp)
+target_link_libraries(aofx_gizmo_tests PRIVATE aofx::aofx)
+add_test(NAME aofx_gizmo_tests COMMAND aofx_gizmo_tests)
