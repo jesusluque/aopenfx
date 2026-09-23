@@ -267,6 +267,39 @@ public:
             into.params.push_back(corner);
         }
 
+        // The four corners as one quad: handles on the corners and the edges
+        // between them, which is what a corner pin is to somebody looking at
+        // it. Without this the corners had no handle at all -- they carry no
+        // `Position` role, and four unrelated points would not have been a
+        // pin anyway.
+        aofx::GizmoDesc pin;
+        pin.id = "pin";
+        pin.label = "Corner pin";
+        pin.kind = aofx::GizmoKind::Quad;
+        for (int index = 0; index < 4; ++index) {
+            const std::string name = "corner" + std::to_string(index + 1);
+            pin.bindings.push_back(aofx::bindParam(name, name));
+        }
+        into.gizmos.push_back(pin);
+
+        // And where a tracker upstream says the corners are, read on the Track
+        // input and never dragged: the pin somebody set and the pin the
+        // footage wants, side by side, is how a drift gets seen.
+        aofx::GizmoDesc tracked;
+        tracked.id = "tracked";
+        tracked.label = "Tracked corners";
+        tracked.kind = aofx::GizmoKind::Quad;
+        for (int index = 0; index < 4; ++index) {
+            tracked.bindings.push_back(aofx::bindInput(
+                "corner" + std::to_string(index + 1), "Track", "corners", index * 2));
+        }
+        tracked.style.line = aofx::GizmoStyle::Line::Dashed;
+        tracked.style.handle = aofx::GizmoStyle::Handle::None;
+        tracked.style.red = 0.35;
+        tracked.style.green = 0.8;
+        tracked.style.blue = 1.0;
+        into.gizmos.push_back(tracked);
+
         aofx::ParamDesc crown;
         crown.name = "crown";
         crown.label = "Crown";

@@ -188,6 +188,20 @@ public:
             "It has no effect with Cut on: there is nothing outside a cut to "
             "fade into.";
         into.params.push_back(soft);
+
+        // And the two corners as one box, so the viewer draws the box that is
+        // cut rather than two points somebody has to imagine a rectangle
+        // between. The corners keep their `Position` role for a host older
+        // than gizmos; a host that knows them draws the box instead, never
+        // both (see `aofx/Gizmo.h`).
+        aofx::GizmoDesc box;
+        box.id = "box";
+        box.label = "Crop box";
+        box.kind = aofx::GizmoKind::Box;
+        box.bindings = {aofx::bindParam("corner1", "corner1"),
+                        aofx::bindParam("corner2", "corner2")};
+        box.style.line = aofx::GizmoStyle::Line::Dashed;
+        into.gizmos.push_back(box);
     }
 
     std::vector<aofx::KernelDesc> kernels() const override {

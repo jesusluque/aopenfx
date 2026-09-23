@@ -38,6 +38,76 @@ boundaries in the blurred picture are where they are in the unblurred one.
 What changed in the SDK that a host implementing it must follow. Newest first.
 Each entry says what to change and how to tell it worked.
 
+## ABI 27 — gizmos in 3D
+
+In this line of the SDK both halves of the gizmo standard arrive as one
+ABI, 27, after the renderer verbs of 26: the gizmo branch numbered them 26
+and 27 from 25, and 26 was already taken here. A bundle built against 26
+(either 26) is refused by a host that speaks 27.
+
+The gizmo vocabulary of the next section, in the scene: a `World` space, `Sphere`,
+`Frame3D` and `Camera` kinds, 3D constraints (`AlongZ`, `OnXY`, `OnXZ`,
+`OnYZ`), `GizmoDesc::camera` and `::rotationOrder`, and `GizmoBinding::clip`
+for an attachment read on an input. The contract is still `docs/gizmos.md`.
+`kAbiVersion` is 27.
+
+- **Rebuild the host and every bundle.** `GizmoDesc` and `GizmoBinding` grew
+  members; a bundle built against 26 is refused.
+- **Draw the three new kinds** and the 3D forms of Point, Line, Arrow, Box,
+  Quad, Polyline, Polygon, Label, Crosshair and Drawing, in `World` space or
+  placed in a `Frame3D` (`aofx::gizmoDimensions` says which).
+- **Where**: in the 3D view if the host has one, and over the picture through
+  the gizmo's `Camera` (its own `camera`, else the nearest parent's) with
+  `aofx::gizmo::projectToPicture`, clipped at the camera's plane. A host with
+  no 3D view skips, silently, the 3D gizmos that have no camera.
+- **Matrices** with `gizmo::frame3DMatrix` and `gizmo::matrixFromRows`, never
+  by hand; the rotation order is the gizmo's.
+- **Dragging** as the constraint table in `docs/gizmos.md` says, using
+  `gizmo::rayFromPicture` over the picture; leave the value alone when the ray
+  misses its plane. A Frame3D ring changes only its own component of
+  `rotate`; a `matrix` slot is never written.
+- **Attachments on an input**: a binding with `clip` reads the values arriving
+  at that input (`InputPlane::values`) of the frame on screen, not the node's
+  output.
+- **Drawings**: pass the gizmo's dimensions to `aofx::gizmo::decodeDrawing`.
+
+Check: the CornerPin example, with a tracker on its Track input, shows a
+dashed quad where the tracker puts the corners beside the editable one; a 3D
+Point bound to a place a Camera looks at lands on the middle of the picture,
+and on the same pixel the render puts it.
+
+## ABI 27 — gizmos
+
+`EffectDesc::gizmos` (`sdk/include/aofx/Descriptor.h`) and `aofx/Gizmo.h`: an
+effect declares any viewer handle as primitives bound to its parameters, and
+the host draws them. The contract is `docs/gizmos.md`. `kAbiVersion` is 26.
+
+- **Rebuild the host and every bundle.** `EffectDesc` grew a member; a bundle
+  built against 26 is refused.
+- **`ShownWhen` moved** from `Descriptor.h` to `Types.h`. Same struct, same
+  namespace; code that includes either header is unchanged.
+- **Draw the fifteen 2D kinds** and offer the handles `docs/gizmos.md` lists
+  for each, in the four 2D spaces, converting through the viewer's own
+  mapping. Build a Frame's matrix with `gizmo::frameMatrix`, never by hand.
+- **Turn a drag into parameter edits**: invert the frames and each binding's
+  `scale`/`offset`, clamp to `hardMin`/`hardMax`, round Integers, one undo
+  step per gesture named after the gizmo, nothing written for read-only
+  bindings, attachments, constants or locked parameters.
+- **Suppress role handles** for parameters bound by a gizmo you draw, and only
+  those: a skipped gizmo suppresses nothing.
+- **Visibility**: `visibility`, `shownWhen`/`shownAlso`, hidden rows, and the
+  parent frame's rules, as the document says; `repeat` over an `ItemCount`
+  pool with `{i}` from one.
+- **Drawings**: read the attachment of the frame on screen with
+  `aofx::gizmo::decodeDrawing`; draw nothing when it refuses.
+- **Validate at load** with `aofx::checkGizmos`; skip what it names and report
+  each once. An enumerator you do not know is skipped the same way, never
+  drawn as something else and never a reason to refuse the bundle.
+
+Check: the Crop example shows one dashed box and no loose corner handles, and
+dragging a corner is one undo step that changes `corner1` or `corner2`; the
+CornerPin example shows a quad whose corners drag the four `corner` parameters.
+
 ## ABI 26 — `Gpu::engines` and `Gpu::render`: a renderer the host owns
 
 Two virtuals appended to `aofx::Gpu` (`sdk/include/aofx/Effect.h`), both
