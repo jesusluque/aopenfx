@@ -23,6 +23,62 @@ Read ─▶ [AOFX Detect] ─▶ [AOFX Track] ─▶ [AOFX Grade] ─▶ [Delive
             + aofxData ───▶ + aofxData ───▶ + aofxData ───▶ (channel ends here)
 ```
 
+## Loading: one OpenFX node per AOFX effect
+
+The host asks an OpenFX binary how many plugins it holds
+(`OfxGetNumberOfPlugins`) and for each one (`OfxGetPlugin`). The bridge
+answers from what it found on disk, so every AOFX effect has its own node,
+with its own name, parameters and inputs, in the host's menus.
+
+**Where it looks.** `AOFX_PLUGIN_PATH` first, as an AOFX host does, then a
+folder inside the bridge's own bundle (`Contents/Resources/aofx`). The
+second is the one that matters in practice: an application started from the
+Dock or a desktop launcher does not inherit a shell's environment, and a
+bridge that finds nothing there lists nothing.
+
+**What it checks, in the order an AOFX host does.** Each `.aofx` is opened
+and kept open for the life of the process. `AofxGetAbiVersion` must equal
+the bridge's `kAbiVersion` and `AofxGetBuildTag` its `buildTag()`: the bridge
+is the AOFX host here, so it is built with the same toolchain as the bundles
+it loads. Then `AofxGetEffectCount` and `AofxGetEffect(i)`, and `describe`
+on each. A bundle that fails any step is left out and the reason is logged,
+never loaded half.
+
+**Which effects make the list.** The subset is decided at load, from the
+`EffectDesc`, so that a node the bridge cannot run never appears:
+
+| `EffectDesc` says | Listed? |
+|---|---|
+| An image effect | Yes |
+| `audioOnly` | No: OpenFX has no sound |
+| `offline` | No: it is a delivery walked by the host's batch, which OpenFX does not have |
+| `usesModel` | Only if the bridge carries an inference runtime |
+
+What only shows at render time -- a `decode` by path, a channel the host
+cannot carry -- refuses then, with a message.
+
+**What each node is called.** The AOFX identifier, unchanged. `Descriptor.h`
+puts AOFX identifiers in the same reverse-DNS space as OpenFX on purpose, so
+a node saved in a project keeps working if the effect is ever built as a
+native OpenFX plugin. `versionMajor`/`versionMinor` become the OpenFX
+plugin version, `label` the name, `grouping` the menu under an `AOFX/`
+prefix. Two bundles with one identifier: the first found wins and the other
+is logged as skipped, as in an AOFX host. The DeliveryOFX is the bridge's
+own, always first in the list.
+
+**One entry point per node.** An OpenFX plugin's `mainEntry` receives no
+pointer back to its plugin, so a single function cannot tell which effect
+it is serving. The bridge carries a fixed table of entry points generated
+by a template, `mainEntry<0>` to `mainEntry<N-1>`, and hands the i-th to
+the i-th effect. `N` is the most effects one bridge can list; beyond it,
+effects are logged as skipped.
+
+**The host keeps its own list.** Hosts usually cache what an OpenFX binary
+described and reuse it while the binary is unchanged. A new `.aofx` does
+not change the bridge's binary, so a host may not notice it until its
+cache is cleared or the bridge is touched. Installing an effect has to say
+so.
+
 ## The rule that keeps it simple: an AOFX chain is not interrupted
 
 AOFX nodes connect to AOFX nodes, from the first one to the DeliveryOFX. No
@@ -146,5 +202,7 @@ refuse, rather than render without it.
 
 - Which hosts: the plane suite decides whether the channel exists at all.
 - Whether each target host loads a plugin's nodes in one process.
+- How each target host caches plugin descriptions, and what makes it look
+  again after a `.aofx` is added.
 - The registry's budget, and whether it follows the host's own memory
   settings.
