@@ -167,7 +167,10 @@ namespace aofx {
 /// moves; what changes is the *contents* of the tag, and the host compares
 /// tags, so a host and a bundle built against 24 and 25 no longer match and
 /// both are rebuilt.
-inline constexpr int kAbiVersion = 25;
+/// 26: `Effect::inputsNeeded`, which inputs a frame reads, asked before any
+/// is rendered -- a switcher stops rendering the source it is not showing.
+/// A vtable change, so every bundle is rebuilt.
+inline constexpr int kAbiVersion = 26;
 
 /// What this translation unit was compiled with.
 ///

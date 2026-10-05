@@ -759,6 +759,10 @@ public:
         const std::vector<ParamValue>* params = nullptr;
         /// The clip at `path`, or an invalid `ClipInfo`. May be empty.
         std::function<ClipInfo(const std::string& path)> clipInfo;
+        /// The extra output planes this render will produce (ids, beyond the
+        /// first), or null when the host does not say. Lets `inputsNeeded`
+        /// keep an input that only feeds a plane somebody is looking at.
+        const std::vector<std::string>* outputsWanted = nullptr;
     };
 
     /// Defaults to the five-argument question, so every effect that does not
@@ -834,6 +838,32 @@ public:
         return regionOfInterest(query.time, output,
                                 query.inputRods != nullptr ? *query.inputRods : noRods,
                                 query.params != nullptr ? *query.params : noParams);
+    }
+
+    /// Which inputs this frame actually reads, in clip order.
+    ///
+    /// Asked before any input is rendered. A host renders every connected
+    /// input before `process`, so a node that picks one of several -- a
+    /// switcher with a file on one input and a live feed on the other --
+    /// paid for the one it was not showing on every frame: measured at 7.6 ms
+    /// of a 45 ms frame for a deinterlaced feed nobody saw. An input answered
+    /// `false` is not rendered and reaches `process` as a null plane, exactly
+    /// like an unconnected one.
+    ///
+    /// `instance` is the same key `RenderRequest::instance` will carry, so an
+    /// effect whose choice lives in state it keeps between frames can answer
+    /// from that state. Answer generously when unsure: an input wrongly left
+    /// out is a black frame, one wrongly kept is only time. A frame the answer
+    /// changes on -- a cut -- must keep both sides.
+    ///
+    /// `query.outputsWanted` says which extra planes this render produces, so
+    /// an input that only feeds one of them can be left out when nobody asked.
+    ///
+    /// Shorter than the inputs, the rest count as needed. The default needs
+    /// everything, so every effect that does not care is unchanged.
+    [[nodiscard]] virtual std::vector<bool> inputsNeeded(
+        const RegionQuery& /*query*/, const std::string& /*instance*/) const {
+        return {};
     }
 
     /// True when this render would hand back its input unchanged.

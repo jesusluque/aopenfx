@@ -38,6 +38,28 @@ boundaries in the blurred picture are where they are in the unblurred one.
 What changed in the SDK that a host implementing it must follow. Newest first.
 Each entry says what to change and how to tell it worked.
 
+## ABI 26 — `Effect::inputsNeeded`: inputs a frame does not read are not rendered
+
+A new virtual on `aofx::Effect`, asked once per frame per node **before** its
+inputs are rendered: `inputsNeeded(const RegionQuery&, const std::string&
+instance)` returns one flag per clip, in clip order. The default returns an
+empty vector, meaning every input is needed. `kAbiVersion` is 26.
+
+- **Call it where the host decides which input frames to render**, with the
+  same parameters `process` will see (including button presses the host
+  counts) and the same `instance` string it will put in `RenderRequest`.
+- **For every `false`, render nothing** for that input and hand `process` a
+  null plane, as for an unconnected input. The input's hash may still enter
+  the node's cache key; it must not be rendered to compute it.
+- **Fill `RegionQuery::outputsWanted`** (new, last member) with the extra
+  output planes this render will allocate, or leave it null.
+- **A vector shorter than the inputs** leaves the rest needed.
+- **Rebuild every bundle**: the vtable changed.
+
+Check: a switcher with a costly chain on its second input, showing the first —
+the chain's nodes do not appear in the frame's timings; cut to the second and
+they do, with no black frame on the cut.
+
 ## ABI 25 — the build tag carries the standard library's ABI
 
 `aofx::buildTag()` (`sdk/include/aofx/Version.h`) now includes the standard
