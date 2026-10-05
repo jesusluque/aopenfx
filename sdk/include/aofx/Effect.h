@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <functional>
 #include <string>
 #include <vector>
@@ -405,6 +406,15 @@ public:
 /// Everything one render needs.
 struct RenderRequest {
     double time = 0.0;
+    /// The frame the whole render is for -- the playhead -- which is `time`
+    /// unless this node is being rendered for a frame some node below reads
+    /// beside the current one (a tracker's reference, an optical flow's
+    /// previous frame). An effect keeping state between frames advances it
+    /// only when the two are equal: a switcher that took a request for the
+    /// reference frame as time running backwards cancelled every transition
+    /// one frame after it started. Hosts before ABI 27 leave it at NaN, which
+    /// is to be read as "equal to `time`".
+    double playheadTime = std::numeric_limits<double>::quiet_NaN();
     /// Bumped by the host's temporal reset. An effect holding state between
     /// frames outside the keep store -- a worker's memory bank, a static map
     /// -- starts over when this changes; everything kept through `keep` is

@@ -170,7 +170,11 @@ namespace aofx {
 /// 26: `Effect::inputsNeeded`, which inputs a frame reads, asked before any
 /// is rendered -- a switcher stops rendering the source it is not showing.
 /// A vtable change, so every bundle is rebuilt.
-inline constexpr int kAbiVersion = 26;
+/// 27: `RenderRequest::playheadTime`, the frame the whole render is for, so
+/// an effect with state between frames can tell the playhead from a frame
+/// another node reads beside it. A struct layout change, so every bundle is
+/// rebuilt.
+inline constexpr int kAbiVersion = 27;
 
 /// What this translation unit was compiled with.
 ///

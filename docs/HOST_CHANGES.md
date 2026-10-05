@@ -38,6 +38,19 @@ boundaries in the blurred picture are where they are in the unblurred one.
 What changed in the SDK that a host implementing it must follow. Newest first.
 Each entry says what to change and how to tell it worked.
 
+## ABI 27 — `RenderRequest::playheadTime`
+
+The frame the whole render is for. Equal to `time` except when the node is
+rendered for another frame some node below it reads (`ClipDesc::alsoFrames`,
+`alsoAtParam`). Defaults to NaN. `kAbiVersion` is 27.
+
+- **Set it on every request** to the time the render was asked for at the top,
+  carried unchanged into every render the host makes at another time for it.
+- **Rebuild every bundle**: the struct layout changed.
+
+Check: a switcher feeding a tracker that reads a reference frame — a Take
+runs its whole transition instead of stopping one frame in.
+
 ## ABI 26 — `Effect::inputsNeeded`: inputs a frame does not read are not rendered
 
 A new virtual on `aofx::Effect`, asked once per frame per node **before** its
