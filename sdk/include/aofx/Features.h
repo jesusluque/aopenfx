@@ -184,4 +184,28 @@ inline constexpr const char* kInliers = "inliers";         ///< 1
 inline constexpr const char* kResidual = "residual";       ///< 1
 inline constexpr const char* kPath = "path";               ///< 1: 0 lost, 1 fast, 2 slow, 3 relocalised
 
+// --- what a tracker publishes about how much of its reference is left -------
+//
+// A tracker that carries points from a reference into the frame knows, every
+// frame, which of them are still there: inside the picture, off whatever
+// moves, consistent with its answer. That is the most direct measure of how
+// far the shot has gone from the reference -- more telling than a coverage
+// fraction -- and a control surface wants to draw it: the surviving points
+// over the picture, and "86 of 128 left".
+//
+// Published values (`Gpu::publish`), not an attachment: an attachment does not
+// survive the nodes below a tracker, and published values reach a viewer and
+// a remote client with the frame they belong to. Any tracker may publish
+// them; a viewer that finds them draws them without knowing which node it is.
+// Positions are document pixels, row zero at the bottom, like every other
+// coordinate a node publishes. At most `kTrackPointsMax` points are sent,
+// spread over the picture; `track_alive` always counts all of them.
+inline constexpr const char* kTrackTotal = "track_total";       ///< points taken on the reference
+inline constexpr const char* kTrackAlive = "track_alive";       ///< of those, still in this frame
+inline constexpr const char* kTrackRefFrame = "track_ref_frame"; ///< the frame they were taken on
+inline constexpr const char* kTrackPoints = "track_points";     ///< how many positions follow
+/// Position N is published as "track_p<N>x" and "track_p<N>y", N from 0.
+inline constexpr const char* kTrackPointPrefix = "track_p";
+inline constexpr int kTrackPointsMax = 64;
+
 }   // namespace aofx
