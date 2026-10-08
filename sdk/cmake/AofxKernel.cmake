@@ -74,7 +74,13 @@ function(aofx_add_kernel target name)
             COMMAND ${GPE_SLANGC} "${source}" -target cuda
                     ${entryFlags} -o "${cu}"
                     -reflection-json "${json}"
+            # GPE_NVCC_FLAGS, gpe's: what else this nvcc needs. The driver
+            # decides which PTX it loads, so the nvcc may have to be older
+            # than the newest toolkit installed, and an older nvcc refuses a
+            # newer host compiler although -ptx builds no host code
+            # (-allow-unsupported-compiler).
             COMMAND ${GPE_NVCC} -ptx "${cu}" -o "${blob}" -arch=${GPE_CUDA_ARCH}
+                    ${GPE_NVCC_FLAGS}
             DEPENDS "${source}"
             COMMENT "slang -> ptx: ${name}"
             VERBATIM)
