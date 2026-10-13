@@ -7,7 +7,13 @@
 #include <string>
 #include <system_error>
 
+#if defined(_WIN32)
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 
 #include "aofx/Effect.h"
 #include "aofx/Version.h"
@@ -18,6 +24,46 @@
 #include "aofx_kernels_channels.h"
 
 namespace fs = std::filesystem;
+
+namespace {
+
+/// The dynamic loader, as dlopen on macOS and Linux and LoadLibrary on
+/// Windows. A Windows DLL's symbols are its own unless exported, which is
+/// what RTLD_LOCAL asks for elsewhere.
+void* openLibrary(const fs::path& binary, std::string& why) {
+#if defined(_WIN32)
+    HMODULE module = ::LoadLibraryExW(binary.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
+    if (module == nullptr) {
+        why = "it would not load (error " + std::to_string(::GetLastError()) + ")";
+    }
+    return reinterpret_cast<void*>(module);
+#else
+    void* handle = dlopen(binary.string().c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (handle == nullptr) {
+        const char* error = dlerror();
+        why = error == nullptr ? "it would not load" : error;
+    }
+    return handle;
+#endif
+}
+
+void* symbolOf(void* handle, const char* name) {
+#if defined(_WIN32)
+    return reinterpret_cast<void*>(::GetProcAddress(static_cast<HMODULE>(handle), name));
+#else
+    return dlsym(handle, name);
+#endif
+}
+
+void closeLibrary(void* handle) {
+#if defined(_WIN32)
+    ::FreeLibrary(static_cast<HMODULE>(handle));
+#else
+    dlclose(handle);
+#endif
+}
+
+}   // namespace
 
 namespace aofx::host {
 namespace {
@@ -99,7 +145,7 @@ struct Bundle {
             gpe::unregisterKernel(name);
         }
         if (handle != nullptr) {
-            dlclose(handle);
+            closeLibrary(handle);
         }
     }
 };
@@ -116,10 +162,10 @@ struct Entry {
 /// not an AOFX bundle, or was built with hidden visibility -- which looks
 /// identical from here and is by far the more likely of the two.
 bool resolve(void* handle, Entry& into, std::string& why) {
-    into.abiVersion = reinterpret_cast<int (*)()>(dlsym(handle, "AofxGetAbiVersion"));
-    into.buildTag = reinterpret_cast<const char* (*)()>(dlsym(handle, "AofxGetBuildTag"));
-    into.effectCount = reinterpret_cast<int (*)()>(dlsym(handle, "AofxGetEffectCount"));
-    into.effect = reinterpret_cast<aofx::Effect* (*)(int)>(dlsym(handle, "AofxGetEffect"));
+    into.abiVersion = reinterpret_cast<int (*)()>(symbolOf(handle, "AofxGetAbiVersion"));
+    into.buildTag = reinterpret_cast<const char* (*)()>(symbolOf(handle, "AofxGetBuildTag"));
+    into.effectCount = reinterpret_cast<int (*)()>(symbolOf(handle, "AofxGetEffectCount"));
+    into.effect = reinterpret_cast<aofx::Effect* (*)(int)>(symbolOf(handle, "AofxGetEffect"));
     if (into.abiVersion == nullptr || into.buildTag == nullptr ||
         into.effectCount == nullptr || into.effect == nullptr) {
         why = "it does not export the AOFX entry points; if this is an AOFX "
@@ -170,16 +216,16 @@ void load(EffectRegistry::Impl& impl, const fs::path& bundle) {
     // RTLD_LOCAL, deliberately: a plugin's symbols must not be visible to the
     // next plugin, or two bundles built from the same SDK would share one
     // another's statics and the second would quietly use the first's.
-    void* handle = dlopen(binary.string().c_str(), RTLD_NOW | RTLD_LOCAL);
+    std::string loadFailure;
+    void* handle = openLibrary(binary, loadFailure);
     if (handle == nullptr) {
-        const char* why = dlerror();
-        report.reason = why == nullptr ? "it would not load" : why;
+        report.reason = std::move(loadFailure);
         impl.reports.push_back(std::move(report));
         return;
     }
 
     auto refuse = [&](std::string why) {
-        dlclose(handle);
+        closeLibrary(handle);
         report.reason = std::move(why);
         impl.reports.push_back(std::move(report));
     };
