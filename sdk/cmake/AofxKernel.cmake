@@ -85,7 +85,12 @@ function(aofx_add_kernel target name)
             COMMAND ${GPE_SLANGC} "${source}" -target cuda
                     ${entryFlags} -o "${cu}"
                     -reflection-json "${json}"
+            # SLANG_CUDA_ENABLE_HALF: Slang's CUDA prelude declares the half
+            # type and its conversions (cuda_fp16.h) only when defined, and
+            # slangc writing a .cu does not define it -- f32tof16 and f16tof32
+            # need them in any kernel that packs halves.
             COMMAND ${GPE_NVCC} -ptx "${cu}" -o "${blob}" -arch=${GPE_CUDA_ARCH}
+                    -DSLANG_CUDA_ENABLE_HALF=1
             DEPENDS "${source}"
             COMMENT "slang -> ptx: ${name}"
             VERBATIM)
