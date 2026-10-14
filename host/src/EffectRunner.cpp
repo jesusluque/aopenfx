@@ -342,6 +342,11 @@ aofx::Buffer EffectRunner::borrow(const std::string& key, const void* pages, siz
     // The pages wrapped as a device buffer where the device can read host
     // memory in place, then adopted by the pool like any foreign buffer: it
     // binds and dispatches as one of the pool's own, and `drop` gives it back.
+    // Only a Metal device has the call: on a Mac, gpe built for Vulkan
+    // (MoltenVK) hands out a VkDevice there.
+    if (impl_->device->backend() != gpe::Device::Backend::Metal) {
+        return {};
+    }
     const uint64_t native = wrapHostPages(impl_->device->backendDevice(), pages, bytes);
     if (native == 0) {
         return {};

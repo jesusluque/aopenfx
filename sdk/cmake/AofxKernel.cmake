@@ -3,7 +3,8 @@
 # Compiling a plugin's kernels and embedding them in its bundle.
 #
 # A kernel is written once, in Slang, and compiled at build time for whichever
-# backend this build targets: PTX for CUDA, a metallib for Metal. The result is
+# backend this build targets: PTX for CUDA, a metallib for Metal, SPIR-V for
+# Vulkan. The result is
 # a byte array in the plugin's own binary, not a file beside it -- a bundle with
 # loose kernels is a bundle to sign, to install, and to have half of.
 #
@@ -93,6 +94,22 @@ function(aofx_add_kernel target name)
                     -DSLANG_CUDA_ENABLE_HALF=1
             DEPENDS "${source}"
             COMMENT "slang -> ptx: ${name}"
+            VERBATIM)
+    elseif(GPE_BACKEND STREQUAL "Vulkan")
+        # One module holding every entry, each under its own name
+        # (-fvk-use-entrypoint-name), with C's layout for the uniform block and
+        # the buffers' elements (-fvk-use-scalar-layout): GPE_SPIRV_FLAGS.
+        set(spirvFlags ${GPE_SPIRV_FLAGS})
+        if(NOT spirvFlags)
+            set(spirvFlags -target spirv -fvk-use-entrypoint-name -fvk-use-scalar-layout)
+        endif()
+        add_custom_command(
+            OUTPUT "${blob}"
+            COMMAND ${GPE_SLANGC} "${source}" ${spirvFlags}
+                    ${entryFlags} -o "${blob}"
+                    -reflection-json "${json}"
+            DEPENDS "${source}"
+            COMMENT "slang -> spirv: ${name}"
             VERBATIM)
     else()
         message(FATAL_ERROR "aofx_add_kernel(${name}): no backend to compile for")
