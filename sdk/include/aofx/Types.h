@@ -218,6 +218,32 @@ struct OutputPlane {
     Buffer      buffer;
 };
 
+/// What an engine is asked to put in an output plane.
+///
+/// The plane's memory is what every `Buffer` is -- float32 RGBA, above -- so
+/// this names what goes into each pixel's four floats, not how they are laid
+/// out. A host refuses by name an output an engine does not produce, and an
+/// effect reads the plane knowing what is in it. Never reinterpreted: a
+/// Depth asked of an engine that has none is a refused render, not a picture
+/// of something else.
+enum class PlaneFormat : uint32_t {
+    Color = 0,    ///< the picture: premultiplied, linear RGBA
+    Depth = 1,    ///< view z in R (G and B the same), A = 1
+    Normal = 2,   ///< world-space normal in RGB, A = 1
+    Id = 3,       ///< an integer per pixel, its bits carried in R; coverage in A
+    Vector = 4,   ///< motion in RG, in pixels of this render
+    Crypto = 5,   ///< a Cryptomatte layer: (id, coverage) pairs, two ranks a pixel
+};
+
+/// One plane an engine writes, and what it must contain.
+struct EngineOutput {
+    OutputPlane plane;
+    PlaneFormat format = PlaneFormat::Color;
+    /// Which one of that kind, where there are several: Id 0 is the
+    /// primitive, 1 the instance; for Crypto, the layer.
+    int index = 0;
+};
+
 /// What a parameter is holding at the frame being rendered.
 ///
 /// Animation is evaluated by the host before this arrives: a plugin sees a

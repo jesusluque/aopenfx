@@ -3,11 +3,13 @@
 # Compiling a plugin's kernels and embedding them in its bundle.
 #
 # A kernel is written once, in Slang, and compiled at build time for whichever
-# backend this build targets: PTX for CUDA, a metallib for Metal. The result is
+# backend this build targets: PTX for CUDA, a metallib for Metal, SPIR-V for
+# Vulkan. The result is
 # a byte array in the plugin's own binary, not a file beside it -- a bundle with
 # loose kernels is a bundle to sign, to install, and to have half of.
 #
-#   aofx_add_kernel(<target> <name> ENTRY <entryPoint> [ENTRY <entryPoint>...])
+#   aofx_add_kernel(<target> <name> ENTRY <entryPoint> [ENTRY <entryPoint>...]
+#                   [SOURCE <file.slang>])
 #
 # More than one entry point compiles into a single blob. That is not a
 # convenience: entry points in one file share their buffer declarations and
@@ -15,7 +17,8 @@
 # separately would be several copies of one layout, free to drift apart. The
 # host registers the blob once and `Gpu::load` finds each entry by name.
 #
-# Compiles <name>.slang from the current source directory and generates
+# Compiles <name>.slang from the current source directory -- or SOURCE, for a
+# kernel that lives under a subdirectory of its own -- and generates
 # aofx_kernels_<name>.h next to it in the build tree, holding
 # `k_<name>` and `k_<name>Bytes`. Include it and hand both to KernelDesc.
 #
@@ -24,12 +27,16 @@
 # ABI: an AOFX plugin is built with the host's toolchain or not at all.
 
 # The reflection trailer's generator, beside this file; see AofxKernelTrailer.cmake.
-set(_AOFX_KERNEL_TRAILER "${CMAKE_CURRENT_LIST_DIR}/AofxKernelTrailer.cmake")
+# A cache entry rather than a directory variable: the function below is global
+# once this file is included anywhere, and a program that includes it once and
+# calls aofx_add_kernel from other directories must still find the generator.
+set(_AOFX_KERNEL_TRAILER "${CMAKE_CURRENT_LIST_DIR}/AofxKernelTrailer.cmake"
+    CACHE INTERNAL "Where aofx_add_kernel finds the kernel trailer generator")
 option(AOFX_KERNEL_REFLECTION
        "Append a reflection trailer (thread groups, buffer and uniform sizes) to every kernel" ON)
 
 function(aofx_add_kernel target name)
-    cmake_parse_arguments(ARG "" "" "ENTRY" ${ARGN})
+    cmake_parse_arguments(ARG "" "SOURCE" "ENTRY" ${ARGN})
     if(NOT ARG_ENTRY)
         message(FATAL_ERROR "aofx_add_kernel(${name}) needs ENTRY")
     endif()
@@ -44,7 +51,12 @@ function(aofx_add_kernel target name)
             "compute backend, so there is nothing to compile a kernel for.")
     endif()
 
-    set(source "${CMAKE_CURRENT_SOURCE_DIR}/${name}.slang")
+    if(ARG_SOURCE)
+        get_filename_component(source "${ARG_SOURCE}" ABSOLUTE
+                               BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+    else()
+        set(source "${CMAKE_CURRENT_SOURCE_DIR}/${name}.slang")
+    endif()
     set(dir "${CMAKE_CURRENT_BINARY_DIR}/kernels")
     file(MAKE_DIRECTORY "${dir}")
     set(blob "${dir}/${name}.blob")
@@ -79,10 +91,30 @@ function(aofx_add_kernel target name)
             # than the newest toolkit installed, and an older nvcc refuses a
             # newer host compiler although -ptx builds no host code
             # (-allow-unsupported-compiler).
+            # SLANG_CUDA_ENABLE_HALF: Slang's CUDA prelude declares the half
+            # type and its conversions (cuda_fp16.h) only when defined, and
+            # slangc writing a .cu does not define it -- f32tof16 and f16tof32
+            # need them in any kernel that packs halves.
             COMMAND ${GPE_NVCC} -ptx "${cu}" -o "${blob}" -arch=${GPE_CUDA_ARCH}
-                    ${GPE_NVCC_FLAGS}
+                    -DSLANG_CUDA_ENABLE_HALF=1 ${GPE_NVCC_FLAGS}
             DEPENDS "${source}"
             COMMENT "slang -> ptx: ${name}"
+            VERBATIM)
+    elseif(GPE_BACKEND STREQUAL "Vulkan")
+        # One module holding every entry, each under its own name
+        # (-fvk-use-entrypoint-name), with C's layout for the uniform block and
+        # the buffers' elements (-fvk-use-scalar-layout): GPE_SPIRV_FLAGS.
+        set(spirvFlags ${GPE_SPIRV_FLAGS})
+        if(NOT spirvFlags)
+            set(spirvFlags -target spirv -fvk-use-entrypoint-name -fvk-use-scalar-layout)
+        endif()
+        add_custom_command(
+            OUTPUT "${blob}"
+            COMMAND ${GPE_SLANGC} "${source}" ${spirvFlags}
+                    ${entryFlags} -o "${blob}"
+                    -reflection-json "${json}"
+            DEPENDS "${source}"
+            COMMENT "slang -> spirv: ${name}"
             VERBATIM)
     else()
         message(FATAL_ERROR "aofx_add_kernel(${name}): no backend to compile for")

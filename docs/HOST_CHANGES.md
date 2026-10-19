@@ -38,6 +38,65 @@ boundaries in the blurred picture are where they are in the unblurred one.
 What changed in the SDK that a host implementing it must follow. Newest first.
 Each entry says what to change and how to tell it worked.
 
+## ABI 28 — `Gpu::engines` and `Gpu::render`: a renderer the host owns
+
+Two virtuals appended to `aofx::Gpu` (`sdk/include/aofx/Effect.h`), both
+defaulted -- `engines()` empty, `render()` not ok with *"this host has no render
+engine"* -- and four new types: `EngineRequest`, `EngineResult`,
+`EngineOutput`, `PlaneFormat`. `kAbiVersion` is 28.
+
+- **Rebuild the host and every bundle.** No effect has to change, but a
+  vtable two slots short is a call into the wrong function, so the ABI number
+  moved and the gates refuse anything built against 27.
+- **A host with a renderer declares it** as an `EngineBackend` in its
+  `Capabilities` (`host/include/aofx_host/Capabilities.h`): a name, which
+  formats it produces, and `render`. The reference host answers `engines()`
+  from that list and checks every `render` before handing it over -- the
+  engine by name, every output buffer valid and live on the device, every
+  output the same rectangle, every format one the engine produces -- and
+  refuses by name otherwise. The engine runs on the host's GPU thread, inside
+  the render that asked, and the planes are live for the call and no longer.
+- **A host with no renderer does nothing**: the defaults answer, and a node
+  that needs an engine refuses with a sentence saying which.
+
+Check: the host lists every bundle with no ABI refusal after the rebuild, and
+a bundle deliberately left at 25 is refused with *"built against AOFX ABI 25,
+and this host speaks 26"*.
+
+## The reference host lives here: `host/`
+
+There is now one host, and it is in this repository beside the SDK. A program
+that loads AOFX bundles adds `host/` after gpe and after `sdk/` and links
+`aofx::host`; what it brings -- a logger, a media stack, an inference runtime,
+a rule for identifiers in an older spelling -- it declares in an
+`aofx::host::Capabilities` it keeps alive for the process. A verb the program
+declared nothing for answers "not available in this host, because it declares
+no <media|model> capability", from this code and not from a copy of it with
+the verb cut out.
+
+- **`kAbiVersion` does not move.** This is a move, not a change of shape: no
+  struct, vtable or entry point is different, and a bundle built before it
+  loads after it.
+- **A program with a host of its own retires it**: the registry (discovery,
+  the ABI and build-tag gates, kernel registration), the runner's device
+  verbs (load, run, scratch, keep, drop, borrow, importFd, read, publish),
+  the channel-restore kernel and the Apple page wrapping are `aofx::host`'s.
+  The program keeps its translation of `aofx::EffectDesc` into whatever its
+  menus speak, and moves the bodies of its media and model verbs behind
+  `MediaBackend` and `ModelBackend`.
+- **`run` checks a dispatch against the kernel's reflection** (buffer count,
+  uniform bytes) when the blob carries a trailer, and refuses by name. A
+  program whose kernels were built without one sees no change.
+- **The channel-restore kernel is `aofx.host.channels`** (entry
+  `channelsMain`), a neutral name; a program that dispatched it under a name
+  of its own uses `aofx::host::kChannelsKernel` now.
+- `aofx_add_kernel` gained an optional `SOURCE <file>`, for a kernel that
+  lives under a subdirectory. Nothing in the headers moved.
+
+Check: two programs built with the same toolchain list the same bundles with
+the same build tag, and a bundle refused in one is refused in the other with
+the same sentence.
+
 ## ABI 27 — `RenderRequest::playheadTime`
 
 The frame the whole render is for. Equal to `time` except when the node is

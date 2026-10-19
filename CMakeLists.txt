@@ -8,7 +8,7 @@
 # toolchain, and turning a plugin into a bundle -- plus examples and the header
 # test. Nothing here links a host.
 cmake_minimum_required(VERSION 3.24)
-project(aopenfx VERSION 24 LANGUAGES CXX)
+project(aopenfx VERSION 26 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

@@ -7,12 +7,14 @@
 # variables. Outside it -- here -- this file finds the same things under the
 # same names, so AofxKernel.cmake is the SDK's own file, byte for byte.
 #
-#   GPE_BACKEND    Metal on Apple, CUDA where a CUDA compiler is found, none
+#   GPE_BACKEND    Metal on Apple, CUDA where a CUDA compiler is found, none;
+#                  Vulkan when GPE_BACKEND_WANTED says so
 #   GPE_SLANGC     the Slang compiler
 #   GPE_METAL      \  Metal: through xcrun, the only stable way to name them
 #   GPE_METALLIB   /
 #   GPE_NVCC       CUDA: nvcc, which turns Slang's C++ into PTX
 #   GPE_CUDA_ARCH  CUDA: the card generation the PTX is built for
+#   GPE_SPIRV_FLAGS Vulkan: what slangc is told for SPIR-V
 #
 # And two of its own:
 #
@@ -31,7 +33,11 @@ else()
 endif()
 
 # --- which backend ---------------------------------------------------------
-if(APPLE)
+set(GPE_BACKEND_WANTED "" CACHE STRING
+    "Metal, CUDA or Vulkan; empty takes the platform's own")
+if(GPE_BACKEND_WANTED STREQUAL "Vulkan")
+    set(GPE_BACKEND "Vulkan")
+elseif(APPLE)
     set(GPE_BACKEND "Metal")
 else()
     include(CheckLanguage)
@@ -95,6 +101,13 @@ elseif(GPE_SLANGC AND GPE_BACKEND STREQUAL "CUDA")
         endif()
     endif()
     message(STATUS "aopenfx: PTX for ${GPE_CUDA_ARCH}")
+    set(AOFX_HAVE_KERNELS TRUE)
+elseif(GPE_SLANGC AND GPE_BACKEND STREQUAL "Vulkan")
+    # slangc writes SPIR-V itself; there is no second compiler to find. The
+    # flags are gpe's (cmake/CompileSlang.cmake), named the same.
+    if(NOT GPE_SPIRV_FLAGS)
+        set(GPE_SPIRV_FLAGS -target spirv -fvk-use-entrypoint-name -fvk-use-scalar-layout)
+    endif()
     set(AOFX_HAVE_KERNELS TRUE)
 endif()
 

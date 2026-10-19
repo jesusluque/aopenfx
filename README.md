@@ -13,6 +13,7 @@ a host built against the same ABI.
 |---|---|
 | `sdk/include/aofx/` | The SDK: C++20 headers, nothing to link |
 | `sdk/cmake/AofxKernel.cmake` | `aofx_add_kernel()`: a Slang kernel compiled and embedded in the plugin |
+| `host/` | The reference host: loads bundles, answers `aofx::Gpu` on gpe; a program declares what it brings (`Capabilities`) |
 | `cmake/AofxToolchain.cmake` | Finds slangc and the Metal or CUDA compilers for the kernels |
 | `cmake/AofxPlugin.cmake` | `aofx_add_plugin()`: a plugin as a `.aofx.bundle` |
 | `examples/` | Eight plugins that need only the SDK |

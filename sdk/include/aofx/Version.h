@@ -174,7 +174,14 @@ namespace aofx {
 /// an effect with state between frames can tell the playhead from a frame
 /// another node reads beside it. A struct layout change, so every bundle is
 /// rebuilt.
-inline constexpr int kAbiVersion = 27;
+/// 28: `Gpu::engines` and `Gpu::render` -- a scene handed to a renderer the
+/// host owns, its planes crossing in both directions on the device.
+/// `EngineRequest`, `EngineOutput`, `EngineResult` and `PlaneFormat` are new
+/// types nothing older reads. Two virtuals appended to the host interface,
+/// the argument of 2: defaulted, so no effect changes, and every bundle is
+/// rebuilt all the same, because a vtable two slots short is a call into the
+/// wrong function.
+inline constexpr int kAbiVersion = 28;
 
 /// What this translation unit was compiled with.
 ///
