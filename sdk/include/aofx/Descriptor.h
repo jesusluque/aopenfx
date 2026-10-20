@@ -275,6 +275,10 @@ struct ParamDesc {
         Multiline,
         Components,
         LocalDirectoryPath,
+        /// A set of the scene's parts, by name, comma separated: the host
+        /// lists the parts its scene holds and lets them be ticked. A host
+        /// that cannot list them shows the text.
+        SceneParts,
     };
     Text text = Text::Plain;
 
