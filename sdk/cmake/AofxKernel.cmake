@@ -9,7 +9,8 @@
 # loose kernels is a bundle to sign, to install, and to have half of.
 #
 #   aofx_add_kernel(<target> <name> ENTRY <entryPoint> [ENTRY <entryPoint>...]
-#                   [SOURCE <file.slang>])
+#                   [SOURCE <file.slang>] [INCLUDE <dir>...] [DEFINE <NAME[=value]>...]
+#                   [DEPENDS <file>...])
 #
 # More than one entry point compiles into a single blob. That is not a
 # convenience: entry points in one file share their buffer declarations and
@@ -21,6 +22,10 @@
 # kernel that lives under a subdirectory of its own -- and generates
 # aofx_kernels_<name>.h next to it in the build tree, holding
 # `k_<name>` and `k_<name>Bytes`. Include it and hand both to KernelDesc.
+#
+# INCLUDE and DEFINE reach slangc as -I and -D: a kernel that imports modules
+# from a library of shaders it does not own, compiled with that library's own
+# switches. DEPENDS names the files it imports, so editing one rebuilds it.
 #
 # The toolchain is the one gpe already found. Building a plugin outside this
 # tree means setting these yourself -- which is the same requirement as the C++
@@ -36,7 +41,7 @@ option(AOFX_KERNEL_REFLECTION
        "Append a reflection trailer (thread groups, buffer and uniform sizes) to every kernel" ON)
 
 function(aofx_add_kernel target name)
-    cmake_parse_arguments(ARG "" "SOURCE" "ENTRY" ${ARGN})
+    cmake_parse_arguments(ARG "" "SOURCE" "ENTRY;INCLUDE;DEFINE;DEPENDS" ${ARGN})
     if(NOT ARG_ENTRY)
         message(FATAL_ERROR "aofx_add_kernel(${name}) needs ENTRY")
     endif()
@@ -44,6 +49,13 @@ function(aofx_add_kernel target name)
     set(entryFlags "")
     foreach(entry IN LISTS ARG_ENTRY)
         list(APPEND entryFlags -entry ${entry} -stage compute)
+    endforeach()
+    foreach(dir IN LISTS ARG_INCLUDE)
+        get_filename_component(dir "${dir}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+        list(APPEND entryFlags -I "${dir}")
+    endforeach()
+    foreach(define IN LISTS ARG_DEFINE)
+        list(APPEND entryFlags -D${define})
     endforeach()
     if(NOT GPE_SLANGC)
         message(FATAL_ERROR
@@ -73,7 +85,7 @@ function(aofx_add_kernel target name)
                     -reflection-json "${json}"
             COMMAND ${GPE_METAL} -c "${msl}" -o "${air}"
             COMMAND ${GPE_METALLIB} "${air}" -o "${blob}"
-            DEPENDS "${source}"
+            DEPENDS "${source}" ${ARG_DEPENDS}
             COMMENT "slang -> metallib: ${name}"
             VERBATIM)
     elseif(GPE_BACKEND STREQUAL "CUDA")
@@ -97,7 +109,7 @@ function(aofx_add_kernel target name)
             # need them in any kernel that packs halves.
             COMMAND ${GPE_NVCC} -ptx "${cu}" -o "${blob}" -arch=${GPE_CUDA_ARCH}
                     -DSLANG_CUDA_ENABLE_HALF=1 ${GPE_NVCC_FLAGS}
-            DEPENDS "${source}"
+            DEPENDS "${source}" ${ARG_DEPENDS}
             COMMENT "slang -> ptx: ${name}"
             VERBATIM)
     elseif(GPE_BACKEND STREQUAL "Vulkan")
@@ -113,7 +125,7 @@ function(aofx_add_kernel target name)
             COMMAND ${GPE_SLANGC} "${source}" ${spirvFlags}
                     ${entryFlags} -o "${blob}"
                     -reflection-json "${json}"
-            DEPENDS "${source}"
+            DEPENDS "${source}" ${ARG_DEPENDS}
             COMMENT "slang -> spirv: ${name}"
             VERBATIM)
     else()

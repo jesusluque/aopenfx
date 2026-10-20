@@ -24,7 +24,7 @@
 # kernel registry reads.
 #
 # A kernel whose parameters are anything but structured buffers and at most one
-# constant buffer -- a texture, a sampler, a loose uniform -- gets no trailer,
+# constant buffer, last -- a texture, a sampler, a loose uniform -- gets no trailer,
 # and runs as a blob without one always has.
 #
 #   aofx_kernel_trailer_hex(<reflection json> "<entry;entry>" <out var>)
@@ -80,6 +80,13 @@ function(aofx_kernel_trailer_hex json_file entries out)
                 return()
             endif()
             if(kind STREQUAL "resource")
+                # A buffer after the uniform block (a module it imports
+                # declares one): the host binds the block at the index after
+                # the buffers it is handed, which is the block's own only when
+                # it comes last. A layout that cannot say so says nothing.
+                if(constantBuffers GREATER 0)
+                    return()
+                endif()
                 string(JSON shape ERROR_VARIABLE bad
                        GET "${json}" parameters ${p} type baseShape)
                 if(bad OR NOT shape STREQUAL "structuredBuffer")
