@@ -181,6 +181,13 @@ struct InputPlane {
     /// for. Empty from a host that does not fill it in.
     Rect        rod;
 
+    /// What this picture is, as a key: two inputs with the same nonzero key
+    /// hold the same pixels, so an effect may keep what it derives from one
+    /// (a lookup table, a prepared environment) until the key changes. Zero
+    /// is "not known" -- a live picture, or a host that does not say -- and
+    /// means derive again.
+    uint64_t    content = 0;
+
     /// Numbers that travelled with this picture: a track, a camera, a
     /// measurement some node upstream made. Empty is the ordinary case.
     ///
