@@ -397,6 +397,17 @@ struct ClipDesc {
     /// input is used, which is what every single-input effect wants and what
     /// the host did before this existed.
     bool passThrough = false;
+
+    /// Read this clip *only* at the frame `alsoAtParam` names, never at the
+    /// frame being rendered.
+    ///
+    /// `alsoAtParam` adds a frame beside the current one, which is what a
+    /// tracker wants. An effect that holds one picture for every frame -- a
+    /// still taken from a generator, say -- wants the named frame and nothing
+    /// else: asked for the current frame as well, the host renders the input
+    /// again on every frame only to throw it away, and its time-dependent key
+    /// reaches this effect's key. Ignored without `alsoAtParam`.
+    bool onlyAtParam = false;
 };
 
 /// A plane the effect writes in addition to the picture.
@@ -517,6 +528,21 @@ struct EffectDesc {
     /// Empty `param` means never. A parameter the node does not set counts as
     /// its declared default.
     ShownWhen flowsWhen;
+
+    /// The output depends on the parameters and the inputs, not on the time
+    /// it is rendered at.
+    ///
+    /// The host then keys this effect's output without the time: rendered
+    /// once, it is the answer at every frame until a parameter or an input
+    /// changes, and the host keeps it resident -- on the device, out of the
+    /// eviction -- while the node is in the graph. Its content key is the
+    /// same from frame to frame, so a consumer that keys its own work on it
+    /// (a renderer's texture) does that work once.
+    ///
+    /// Only true when it is: an effect that reads the time, or an input at
+    /// the current frame (anything but `onlyAtParam` clips), would be frozen
+    /// on its first frame.
+    bool timeless = false;
 };
 
 }   // namespace aofx

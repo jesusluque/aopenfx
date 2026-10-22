@@ -181,7 +181,11 @@ namespace aofx {
 /// the argument of 2: defaulted, so no effect changes, and every bundle is
 /// rebuilt all the same, because a vtable two slots short is a call into the
 /// wrong function.
-inline constexpr int kAbiVersion = 28;
+/// 29: `ClipDesc::onlyAtParam` and `EffectDesc::timeless` -- a clip read at
+/// the named frame alone, and an output that does not depend on the time, so
+/// an effect can hold one picture on the device for every frame. Two fields
+/// appended to two descriptor structs, so every bundle is rebuilt.
+inline constexpr int kAbiVersion = 29;
 
 /// What this translation unit was compiled with.
 ///
